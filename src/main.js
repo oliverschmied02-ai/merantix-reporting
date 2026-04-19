@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { loadTransactionsFromDB, clearDB } from './lib/db.js';
+import { loadFromServer, clearFromServer } from './lib/db.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
 // Expose all functions globally (called from inline onclick= in HTML)
@@ -41,7 +41,7 @@ Object.assign(window, {
 });
 
 function resetAll() {
-  clearDB().catch(() => {});
+  clearFromServer().catch(() => {});
   resetAPP();
   document.getElementById('file-input').value = '';
   const ei = document.getElementById('file-input-extra');
@@ -98,9 +98,10 @@ async function initApp() {
   initOutsidePickerClose();
   window.addEventListener('resize', updateAboveTableHeight);
 
-  // Try to restore persisted data from IndexedDB
+  // Try to restore persisted data from server
   try {
-    const { transactions, loadedFiles, accountNames } = await loadTransactionsFromDB();
+    const saved = await loadFromServer();
+    const { transactions, loadedFiles, accountNames } = saved || {};
     if (transactions && transactions.length > 0 && loadedFiles && loadedFiles.length > 0) {
       APP.allTransactions = transactions;
       APP.loadedFiles = loadedFiles;
@@ -115,7 +116,7 @@ async function initApp() {
       return; // skip upload screen
     }
   } catch (e) {
-    console.warn('Could not restore from IndexedDB:', e);
+    console.warn('Could not restore from server:', e);
   }
 
   // No persisted data — show upload screen

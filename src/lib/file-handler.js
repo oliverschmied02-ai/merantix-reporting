@@ -3,7 +3,7 @@ import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './pars
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
-import { saveTransactionsToDB, clearDB } from './db.js';
+import { saveToServer, clearFromServer } from './db.js';
 
 export function mergeTransactions(newTxns, fileId) {
   for (const t of newTxns) {
@@ -44,9 +44,9 @@ export function updateTopCompany() {
     APP.allTransactions.length.toLocaleString('de-DE') + ' Buchungszeilen';
 }
 
-function persistToDB() {
-  saveTransactionsToDB(APP.allTransactions, APP.loadedFiles, APP.accountNames)
-    .catch(e => console.warn('IndexedDB save failed:', e));
+function persistToServer() {
+  saveToServer(APP.allTransactions, APP.loadedFiles, APP.accountNames)
+    .catch(e => console.warn('Server save failed:', e));
 }
 
 export function removeFile(fileId) {
@@ -54,10 +54,10 @@ export function removeFile(fileId) {
   APP.loadedFiles = APP.loadedFiles.filter(f => f.id !== fileId);
   updateSidebarBadge();
   if (APP.loadedFiles.length === 0) {
-    clearDB().catch(() => {});
+    clearFromServer().catch(() => {});
     window.resetAll();
   } else {
-    persistToDB();
+    persistToServer();
     refreshYears();
     updateTopCompany();
     buildPL();
@@ -121,8 +121,8 @@ export async function handleFile(file) {
       years: fileYears,
     });
 
-    // Persist to IndexedDB so data survives page refresh
-    persistToDB();
+    // Persist to server so data survives refresh and works across devices
+    persistToServer();
 
     updateSidebarBadge();
     refreshYears();

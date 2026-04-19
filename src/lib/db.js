@@ -1,92 +1,42 @@
 /**
- * IndexedDB persistence for transactions, account names, and file metadata.
- * Survives page refresh — data is loaded back into APP on startup.
+ * Server-side persistence via /api/data.
+ * Data is stored as JSON on the Railway server (persistent volume).
+ * Works across all devices and browsers.
  */
 
-const DB_NAME = 'gdpdu_pl_v1';
-const DB_VERSION = 1;
-
-let _db = null;
-
-export function openDB() {
-  if (_db) return Promise.resolve(_db);
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = e => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('transactions')) {
-        db.createObjectStore('transactions', { autoIncrement: true });
-      }
-      if (!db.objectStoreNames.contains('meta')) {
-        db.createObjectStore('meta');
-      }
-    };
-    req.onsuccess = e => { _db = e.target.result; resolve(_db); };
-    req.onerror = () => reject(req.error);
-  });
-}
-
-export async function saveTransactionsToDB(transactions, loadedFiles, accountNames) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions', 'meta'], 'readwrite');
-    // Clear old data
-    tx.objectStore('transactions').clear();
-    tx.objectStore('meta').clear();
-
-    // Store transactions as a single serialised blob (fast & simple)
-    // Dates need special handling — convert to ISO strings
-    const serialised = transactions.map(t => ({
+export async function saveToServer(transactions, loadedFiles, accountNames) {
+  const payload = {
+    transactions: transactions.map(t => ({
       ...t,
       datum: t.datum ? t.datum.toISOString() : null,
-    }));
-    tx.objectStore('transactions').add(serialised);
-
-    // Store file metadata and account names
-    tx.objectStore('meta').put(loadedFiles, 'loadedFiles');
-    tx.objectStore('meta').put([...accountNames.entries()], 'accountNames');
-
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
+    })),
+    loadedFiles,
+    accountNames: [...accountNames.entries()],
+  };
+  const res = await fetch('/api/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
+  if (!res.ok) throw new Error('Save failed: ' + res.status);
 }
 
-export async function loadTransactionsFromDB() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions', 'meta'], 'readonly');
-    let transactions = null, loadedFiles = null, accountNames = null;
+export async function loadFromServer() {
+  const res = await fetch('/api/data');
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data) return null;
 
-    const tReq = tx.objectStore('transactions').getAll();
-    tReq.onsuccess = () => {
-      const rows = tReq.result;
-      if (rows.length > 0) {
-        // Deserialise dates back
-        transactions = rows[0].map(t => ({
-          ...t,
-          datum: t.datum ? new Date(t.datum) : null,
-        }));
-      }
-    };
-
-    const lfReq = tx.objectStore('meta').get('loadedFiles');
-    lfReq.onsuccess = () => { loadedFiles = lfReq.result || []; };
-
-    const anReq = tx.objectStore('meta').get('accountNames');
-    anReq.onsuccess = () => { accountNames = new Map(anReq.result || []); };
-
-    tx.oncomplete = () => resolve({ transactions, loadedFiles, accountNames });
-    tx.onerror = () => reject(tx.error);
-  });
+  return {
+    transactions: data.transactions.map(t => ({
+      ...t,
+      datum: t.datum ? new Date(t.datum) : null,
+    })),
+    loadedFiles:  data.loadedFiles || [],
+    accountNames: new Map(data.accountNames || []),
+  };
 }
 
-export async function clearDB() {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(['transactions', 'meta'], 'readwrite');
-    tx.objectStore('transactions').clear();
-    tx.objectStore('meta').clear();
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-  });
+export async function clearFromServer() {
+  await fetch('/api/data', { method: 'DELETE' });
 }
