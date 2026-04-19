@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GDPdU P&amp;L Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+
+    <!-- New Section Modal (in head to be available before body render) -->
+    <div id="new-section-modal">
+      <div class="modal-box">
+        <div class="modal-title">Neue Sektion erstellen</div>
+        <div class="modal-field">
+          <label class="modal-label">Name</label>
+          <input type="text" class="modal-input" id="ns-name" placeholder="z.B. EBITDA Marge">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Typ</label>
+          <div class="modal-type-grid">
+            <div class="modal-type-card selected" id="ns-type-section" onclick="selectNsType('section')">
+              <div class="tc-icon">📂</div>
+              <div class="tc-label">Kontengruppe</div>
+              <div class="tc-desc">Konten zuordnen &amp; summieren</div>
+            </div>
+            <div class="modal-type-card" id="ns-type-ratio" onclick="selectNsType('ratio')">
+              <div class="tc-icon">📐</div>
+              <div class="tc-label">Kennzahl (Ratio)</div>
+              <div class="tc-desc">Zwei Werte dividieren</div>
+            </div>
+          </div>
+        </div>
+        <div id="ns-balance-field" class="modal-field">
+          <label class="modal-label">Vorzeichen</label>
+          <select class="modal-select" id="ns-balance">
+            <option value="S">Aufwand (Soll / negativ)</option>
+            <option value="H">Ertrag (Haben / positiv)</option>
+          </select>
+        </div>
+        <div id="ns-ratio-field" class="modal-field" style="display:none">
+          <label class="modal-label">Formel: Zähler ÷ Nenner × 100 %</label>
+          <div class="modal-ratio-row">
+            <select class="modal-select" id="ns-ratio-num" style="padding:.38rem .55rem"></select>
+            <div class="modal-ratio-divider">÷</div>
+            <select class="modal-select" id="ns-ratio-den" style="padding:.38rem .55rem"></select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn-cancel" onclick="closeNewSectionModal()">Abbrechen</button>
+          <button class="modal-btn modal-btn-ok" onclick="confirmNewSection()">Erstellen</button>
+        </div>
+      </div>
+    </div>
+  </head>
+  <body>
+    <!-- ═══ UPLOAD ═══ -->
+    <div id="upload-screen">
+      <div class="app-logo"><span class="app-logo-badge">P&amp;L</span> Analyzer</div>
+      <div class="app-sub">GDPdU · Buchungssatzprotokoll · Monat / Quartal / YTD</div>
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-icon">🗂️</div>
+        <div class="drop-zone-title">GDPdU ZIP-Datei hochladen</div>
+        <div class="drop-zone-sub">Drag &amp; Drop oder klicken</div>
+        <input type="file" id="file-input" accept=".zip" />
+      </div>
+      <div class="hint-box">
+        <p>
+          GDPdU-ZIP mit <code>index.xml</code>,
+          <code>Buchungssatzprotokoll.csv</code> und
+          <code>Sachkontenstamm.csv</code>. Buchungsmonat wird aus
+          <code>Stapelnummer</code> (Format <code>01-2025/xxx</code>) gelesen.
+          Nur GuV-Konten werden berücksichtigt. Alle Daten bleiben lokal.
+        </p>
+      </div>
+    </div>
+
+    <!-- ═══ LOADING ═══ -->
+    <div id="loading-screen">
+      <div class="spinner"></div>
+      <div id="loading-text">Datei wird geladen…</div>
+    </div>
+
+    <!-- ═══ APP SHELL (sidebar + main) ═══ -->
+    <div id="app-shell" style="display:none">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div class="sb-header">
+          <div class="sb-logo">
+            <span class="app-logo-badge" style="font-size:.8rem;padding:.15rem .45rem">P&amp;L</span>
+            <span class="sb-logo-text">Analyzer</span>
+          </div>
+          <button class="sb-collapse-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">◀</button>
+        </div>
+        <div class="sb-nav">
+          <button class="sb-nav-item active" id="nav-pl" onclick="setMainView('pl-screen')">
+            <span class="sb-nav-icon">📊</span>
+            <span class="sb-nav-label">P&amp;L Statement</span>
+          </button>
+          <button class="sb-nav-item" id="nav-files" onclick="setMainView('files-screen')">
+            <span class="sb-nav-icon">🗂</span>
+            <span class="sb-nav-label">Dateien</span>
+            <span class="sb-nav-badge" id="sb-files-badge">0</span>
+          </button>
+        </div>
+        <div class="sb-footer">
+          <button class="sb-nav-item" onclick="toggleSettings()">
+            <span class="sb-nav-icon">⚙️</span>
+            <span class="sb-nav-label">Einstellungen</span>
+          </button>
+          <button class="sb-nav-item" onclick="resetAll()" style="color:#dc2626">
+            <span class="sb-nav-icon">↩</span>
+            <span class="sb-nav-label">Alles zurücksetzen</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Main area -->
+      <div id="app-main">
+
+        <!-- ═══ P&L ═══ -->
+        <div id="pl-screen">
+          <div class="top-bar">
+            <div>
+              <div class="top-title">P&amp;L Statement</div>
+              <div class="top-company" id="top-company"></div>
+            </div>
+            <div class="top-sep"></div>
+            <div class="seg-ctrl" id="view-seg">
+              <button class="seg-btn active" data-mode="monat" onclick="setViewMode('monat')">Monat</button>
+              <button class="seg-btn" data-mode="quartal" onclick="setViewMode('quartal')">Quartal</button>
+            </div>
+            <div class="top-sep"></div>
+            <span class="lbl">Jahr</span>
+            <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
+            <button class="btn-settings" onclick="toggleSettings()" title="Einstellungen">⚙️</button>
+          </div>
+
+          <div style="padding: 1rem 1.5rem 0.5rem" id="kpi-bar"></div>
+
+          <details class="unmapped-bar hidden" id="unmapped-details">
+            <summary>⚠ Konten außerhalb GuV-Mapping gefunden</summary>
+            <div class="unmapped-list" id="unmapped-list"></div>
+          </details>
+
+          <div class="pl-wrap">
+            <table class="pl-table" id="pl-table">
+              <thead id="pl-thead">
+                <tr><th class="th-pos">Position</th></tr>
+              </thead>
+              <tbody id="pl-tbody"></tbody>
+            </table>
+          </div>
+        </div><!-- /pl-screen -->
+
+        <!-- ═══ DATEIEN ═══ -->
+        <div id="files-screen">
+          <div class="files-page-header">
+            <div class="files-page-title">Geladene Dateien</div>
+            <div class="files-page-sub">Alle Daten bleiben lokal im Browser.</div>
+          </div>
+          <div class="files-list" id="files-list"></div>
+          <div class="files-drop-zone" id="drop-zone-extra"
+               ondrop="handleDrop(event,'extra')"
+               ondragover="event.preventDefault();this.classList.add('drag-over')"
+               ondragleave="this.classList.remove('drag-over')"
+               onclick="document.getElementById('file-input-extra').click()">
+            <div class="files-drop-zone-icon">➕</div>
+            <div class="files-drop-zone-title">Weitere GDPdU-Datei hinzufügen</div>
+            <div class="files-drop-zone-sub">Drag &amp; Drop oder klicken</div>
+            <input type="file" id="file-input-extra" accept=".zip" style="display:none" onchange="handleFileInput(this)" />
+          </div>
+        </div><!-- /files-screen -->
+
+      </div><!-- /app-main -->
+    </div><!-- /app-shell -->
+
+    <!-- ═══ DRILL PANEL ═══ -->
+    <div id="overlay"></div>
+    <div id="drill-panel">
+      <div class="drill-header">
+        <div class="drill-title-block">
+          <div class="drill-title" id="drill-title">Buchungen</div>
+          <div class="drill-period" id="drill-period"></div>
+          <div class="drill-sub" id="drill-sub"></div>
+        </div>
+        <button class="drill-close" onclick="closeDrill()">✕</button>
+      </div>
+      <div class="drill-stats" id="drill-stats"></div>
+      <div class="drill-search">
+        <input type="text" id="drill-search" placeholder="Suchen (Text, Beleg, Konto…)" oninput="renderDrillTable()" />
+      </div>
+      <div class="drill-table-wrap">
+        <table class="drill-table">
+          <thead>
+            <tr>
+              <th>Datum</th><th>Beleg</th><th>Kto</th><th>GKto</th>
+              <th>Buchungstext</th><th class="r">Soll</th><th class="r">Haben</th>
+            </tr>
+          </thead>
+          <tbody id="drill-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ SETTINGS PANEL ═══ -->
+    <div id="settings-panel">
+      <div class="settings-header">
+        <div class="settings-title">⚙️ Einstellungen</div>
+        <button class="settings-close" onclick="toggleSettings()">✕</button>
+      </div>
+      <div class="settings-tabs">
+        <button class="settings-tab active" onclick="switchSettingsTab('coa')" data-tab="coa">Kontenplan</button>
+        <button class="settings-tab" onclick="switchSettingsTab('rules')" data-tab="rules">Buchungsregeln</button>
+      </div>
+      <div class="settings-content">
+        <!-- CoA Tab -->
+        <div id="coa-tab" class="settings-tab-content">
+          <div class="settings-toolbar">
+            <button class="settings-btn" onclick="restoreDefaultPL()" title="Standard wiederherstellen">🔄 Standard</button>
+            <button class="settings-btn" onclick="exportCoA()" title="Als JSON exportieren">⬇ Export</button>
+            <button class="settings-btn" onclick="importCoADialog()" title="JSON importieren">⬆ Import</button>
+          </div>
+          <div class="coa-tree" id="coa-tree"></div>
+          <button class="coa-add-section" onclick="addNewSection()">+ Neue Sektion</button>
+        </div>
+        <!-- Rules Tab -->
+        <div id="rules-tab" class="settings-tab-content hidden">
+          <div class="rules-section">
+            <div style="margin-bottom: 1rem">
+              <input type="text" class="search-box" id="txn-picker-search"
+                     placeholder="Buchungen durchsuchen (alle Spalten)…"
+                     oninput="updateTransactionPicker()" />
+              <div class="match-count" id="txn-picker-count"
+                   style="margin-top: 0.3rem; font-size: 0.75rem; color: #6b7280"></div>
+            </div>
+            <div style="max-height:300px;overflow-y:auto;border:1px solid #e4e9f5;border-radius:8px;margin-bottom:1rem">
+              <table class="txn-picker-table" style="width:100%;border-collapse:collapse;font-size:.7rem">
+                <thead style="position:sticky;top:0;background:#f4f6fb;border-bottom:1px solid #e4e9f5">
+                  <tr>
+                    <th style="padding:.4rem;text-align:center;width:30px">
+                      <input type="checkbox" id="txn-select-all" onchange="toggleSelectAllTransactions()"/>
+                    </th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Datum</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Beleg</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Kto</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">GKto</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Text</th>
+                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Soll</th>
+                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Haben</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Zugeordnet</th>
+                  </tr>
+                </thead>
+                <tbody id="txn-picker-tbody" style="background:#fff"></tbody>
+              </table>
+            </div>
+            <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
+              <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">
+                <strong id="txn-selection-count">0 Buchungen</strong> ausgewählt
+              </div>
+              <div style="display:grid;gap:.5rem">
+                <label style="font-size:.75rem;color:#8b95a9;font-weight:600">Ausgewählte Buchungen zuordnen nach:</label>
+                <select id="txn-bulk-target-sub" style="padding:.4rem;background:#fff;color:#1e2433;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;font-family:inherit">
+                  <option value="">-- Kategorie wählen --</option>
+                </select>
+                <button onclick="applyBulkReclassification()" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
+                <button onclick="clearTransactionSelection()" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+              </div>
+            </div>
+          </div>
+          <div style="margin-top:2rem;border-top:1px solid #e4e9f5;padding-top:1rem">
+            <div style="font-size:.8rem;color:#1e2433;margin-bottom:1rem;font-weight:600">Bestehende Regeln</div>
+            <div class="rules-list" id="rules-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
