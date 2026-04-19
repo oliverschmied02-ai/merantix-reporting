@@ -1,0 +1,3362 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>GDPdU P&amp;L Analyzer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html { font-size: 13px; }
+      body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: #f4f6fb;
+        color: #1e2433;
+        min-height: 100vh;
+        line-height: 1.5;
+      }
+      .hidden { display: none !important; }
+
+      /* ── Upload ── */
+      #upload-screen {
+        display: flex; flex-direction: column; align-items: center;
+        justify-content: center; min-height: 100vh; padding: 2rem; gap: .6rem;
+        background: linear-gradient(145deg, #f0f4ff 0%, #f8f9fc 100%);
+      }
+      .app-logo {
+        font-size: 1.6rem; font-weight: 800; color: #1e2433;
+        letter-spacing: -.04em; display: flex; align-items: center; gap: .5rem;
+      }
+      .app-logo-badge {
+        background: linear-gradient(135deg, #4f6ef7, #6c8bff);
+        color: #fff; border-radius: 10px; padding: .2rem .55rem;
+        font-size: 1rem; font-weight: 700;
+      }
+      .app-sub { color: #8b95a9; margin-bottom: 2rem; font-size: .82rem; }
+      .drop-zone {
+        border: 2px dashed #c7d0e8; border-radius: 18px;
+        padding: 3.5rem 5rem; text-align: center; cursor: pointer;
+        transition: all .2s; max-width: 500px; width: 100%;
+        background: #fff; box-shadow: 0 4px 24px rgba(79,110,247,.07);
+      }
+      .drop-zone:hover, .drop-zone.drag-over {
+        border-color: #4f6ef7; background: #f5f7ff;
+        box-shadow: 0 6px 32px rgba(79,110,247,.14);
+      }
+      .drop-zone-icon { font-size: 2.5rem; margin-bottom: .8rem; }
+      .drop-zone-title { font-size: 1rem; font-weight: 700; color: #1e2433; margin-bottom: .3rem; }
+      .drop-zone-sub { color: #8b95a9; font-size: .78rem; }
+      #file-input { display: none; }
+      .hint-box {
+        margin-top: 1.25rem; background: #fff; border: 1px solid #e4e9f5;
+        border-radius: 12px; padding: .9rem 1.25rem; max-width: 500px; width: 100%;
+        box-shadow: 0 2px 8px rgba(0,0,0,.04);
+      }
+      .hint-box p { color: #8b95a9; font-size: .78rem; line-height: 1.7; }
+      .hint-box code {
+        color: #4f6ef7; background: #eef1ff;
+        border-radius: 4px; padding: .05rem .35rem; font-size: .75rem;
+      }
+
+      /* ── Loading ── */
+      #loading-screen {
+        display: none; flex-direction: column; align-items: center;
+        justify-content: center; min-height: 100vh; gap: 1.25rem;
+        background: #f4f6fb;
+      }
+      .spinner {
+        width: 40px; height: 40px;
+        border: 3px solid #e4e9f5; border-top-color: #4f6ef7;
+        border-radius: 50%; animation: spin .7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+      #loading-text { color: #8b95a9; font-size: .875rem; }
+
+      /* ── P&L Screen ── */
+      #pl-screen { display: none; min-height: 100vh; background: #f4f6fb; }
+
+      /* ── Top Bar ── */
+      .top-bar {
+        background: #fff; border-bottom: 1px solid #e4e9f5;
+        padding: .75rem 1.5rem; display: flex; align-items: center;
+        gap: .85rem; flex-wrap: wrap; position: sticky; top: 0; z-index: 100;
+        box-shadow: 0 1px 12px rgba(0,0,0,.05);
+      }
+      .top-title { font-size: .95rem; font-weight: 700; color: #1e2433; }
+      .top-company { color: #8b95a9; font-size: .72rem; margin-top: .05rem; }
+
+      .seg-ctrl {
+        display: flex; background: #f0f4ff; border: 1px solid #d6dff5;
+        border-radius: 8px; overflow: hidden; flex-shrink: 0; padding: 2px; gap: 2px;
+      }
+      .seg-btn {
+        padding: .3rem .85rem; font-size: .75rem; font-weight: 600;
+        cursor: pointer; border: none; background: transparent;
+        color: #8b95a9; transition: all .15s; border-radius: 6px;
+      }
+      .seg-btn.active { background: #fff; color: #4f6ef7; box-shadow: 0 1px 4px rgba(0,0,0,.1); }
+
+      .top-sep { width: 1px; height: 20px; background: #e4e9f5; flex-shrink: 0; }
+
+      .lbl { color: #8b95a9; font-size: .73rem; white-space: nowrap; font-weight: 500; }
+      select.ctrl {
+        background: #fff; border: 1px solid #d6dff5; color: #1e2433;
+        border-radius: 8px; padding: .32rem .65rem; font-size: .78rem;
+        cursor: pointer; font-family: inherit; font-weight: 500;
+        box-shadow: 0 1px 3px rgba(0,0,0,.05);
+      }
+      select.ctrl:focus { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.12); }
+
+      .btn-sm {
+        padding: .32rem .85rem; border-radius: 8px; font-size: .73rem;
+        font-weight: 600; cursor: pointer; border: 1px solid #d6dff5;
+        background: #fff; color: #8b95a9; transition: all .15s; margin-left: auto;
+        font-family: inherit;
+      }
+      .btn-sm:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f5f7ff; }
+
+      .btn-settings {
+        padding: .32rem .7rem; border-radius: 8px; font-size: .88rem;
+        cursor: pointer; border: 1px solid #d6dff5; background: #fff;
+        color: #8b95a9; transition: all .15s; display: flex;
+        align-items: center; justify-content: center;
+      }
+      .btn-settings:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f5f7ff; }
+
+      /* ── KPI bar ── */
+      .pl-summary { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+      .kpi {
+        background: #fff; border: 1px solid #e4e9f5; border-radius: 12px;
+        padding: .85rem 1.2rem; min-width: 140px; flex: 1;
+        box-shadow: 0 2px 8px rgba(0,0,0,.04);
+        transition: box-shadow .15s;
+      }
+      .kpi:hover { box-shadow: 0 4px 16px rgba(79,110,247,.1); }
+      .kpi-label {
+        color: #8b95a9; font-size: .65rem; font-weight: 600;
+        text-transform: uppercase; letter-spacing: .06em; margin-bottom: .3rem;
+      }
+      .kpi-val { font-size: 1.1rem; font-weight: 800; color: #1e2433; font-variant-numeric: tabular-nums; }
+      .kpi-sub { color: #a0aabb; font-size: .67rem; margin-top: .15rem; font-weight: 500; }
+
+      /* ── Table wrapper ── */
+      .pl-wrap {
+        overflow: auto;
+        padding: 0 1.5rem 1.5rem;
+        height: calc(100vh - var(--above-table-h, 200px));
+      }
+
+      /* ── P&L Table ── */
+      .pl-table { border-collapse: separate; border-spacing: 0; min-width: 700px; width: 100%; }
+
+      .pl-table thead th {
+        background: #f4f6fb; padding: .5rem .8rem; font-size: .64rem;
+        font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+        color: #a0aabb; border-bottom: 2px solid #e4e9f5;
+        white-space: nowrap; text-align: right; position: sticky; top: 0;
+      }
+      .pl-table thead th.th-pos {
+        text-align: left; min-width: 240px; left: 0; z-index: 10; background: #f4f6fb;
+      }
+      .pl-table thead th.th-ytd { color: #4f6ef7; border-left: 2px solid #e4e9f5; background: #f4f6fb; }
+      .pl-table thead th.th-q1,
+      .pl-table thead th.th-q2,
+      .pl-table thead th.th-q3 { border-left: 1px solid rgba(79,110,247,.15); }
+
+      /* Row base */
+      .pl-table td {
+        padding: .44rem .8rem; border-bottom: 1px solid #f0f2f8;
+        text-align: right; font-variant-numeric: tabular-nums;
+        white-space: nowrap; font-size: .8rem; vertical-align: middle;
+      }
+      .pl-table td.td-pos {
+        text-align: left; font-size: .8rem; position: sticky; left: 0;
+        background: inherit; display: flex; align-items: center; gap: .4rem;
+        border-right: 1px solid #edf0f8; min-width: 240px; max-width: 300px;
+      }
+      .pl-table td.td-ytd { border-left: 2px solid #e4e9f5; font-weight: 600; }
+
+      .data-cell { cursor: pointer; }
+      .data-cell:hover {
+        background: rgba(79,110,247,.06) !important;
+        outline: 1px solid rgba(79,110,247,.3);
+      }
+
+      /* Section rows */
+      tr.row-section { cursor: pointer; }
+      tr.row-section td { color: #1e2433; font-weight: 600; }
+      tr.row-section:hover td { background: rgba(79,110,247,.03); }
+      tr.row-section td.td-pos { background: #fff; }
+
+      /* Sub rows */
+      tr.row-sub { cursor: pointer; }
+      tr.row-sub td { color: #4b5563; font-size: .77rem; }
+      tr.row-sub:hover td { background: rgba(79,110,247,.025); }
+      tr.row-sub td.td-pos { padding-left: 1.9rem !important; background: #fafbfd; font-size: .77rem; }
+
+      /* Account rows */
+      tr.row-acct td { color: #8b95a9; font-size: .73rem; }
+      tr.row-acct td.td-pos { padding-left: 3.2rem !important; background: #f9fafd; font-size: .73rem; }
+      tr.row-acct:hover td { background: rgba(79,110,247,.04); }
+      tr.row-acct td.td-pos .acct-drill { opacity: 0; color: #4f6ef7; font-size: .6rem; margin-left: .2rem; }
+      tr.row-acct:hover td.td-pos .acct-drill { opacity: 1; }
+
+      /* Computed rows */
+      tr.row-computed td {
+        font-weight: 700; color: #1e2433; background: #eef1fb;
+        border-top: 1px solid #dde3f5; border-bottom: 1px solid #dde3f5;
+        padding: .55rem .8rem;
+      }
+      tr.row-computed td.td-pos { background: #eef1fb; }
+      tr.row-computed.ebt td {
+        font-size: .88rem; background: #e8edfa;
+        border-top: 2px solid #c8d3ef;
+      }
+      tr.row-computed.ebt td.td-pos { background: #e8edfa; }
+
+      /* Separator */
+      tr.row-sep td { padding: .2rem; background: transparent; border: none; }
+      tr.row-sep td.td-pos { background: transparent; }
+
+      .q-start { border-left: 1px solid rgba(79,110,247,.2) !important; }
+
+      /* Expand icon */
+      .expand-btn {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 16px; height: 16px; border-radius: 5px;
+        background: #edf0f8; color: #a0aabb; font-size: .5rem;
+        flex-shrink: 0; transition: all .15s; user-select: none;
+      }
+      tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
+        background: #dce5ff; color: #4f6ef7; transform: rotate(90deg);
+      }
+
+      .rule-indicator {
+        width: 6px; height: 6px; border-radius: 50%;
+        background: #f59e0b; margin-left: .3rem; display: inline-block;
+      }
+
+      /* Values */
+      .vp { color: #16a34a; }
+      .vn { color: #dc2626; }
+      .vm { color: #a0aabb; }
+      .vz { color: #d1d8e8; }
+      .cell-zero { color: #e4e9f5; }
+
+      /* ── Unmapped ── */
+      .unmapped-bar {
+        margin: 0 1.5rem 1rem; padding: .7rem 1.1rem;
+        background: rgba(245,158,11,.06); border: 1px solid rgba(245,158,11,.25);
+        border-radius: 10px;
+      }
+      .unmapped-bar summary { color: #d97706; font-size: .78rem; font-weight: 600; cursor: pointer; list-style: none; }
+      .unmapped-list { margin-top: .5rem; display: flex; flex-wrap: wrap; gap: .3rem; }
+      .unmapped-tag {
+        background: #fff; border: 1px solid #e4e9f5; border-radius: 5px;
+        padding: .1rem .45rem; font-size: .7rem; color: #8b95a9; font-family: monospace;
+      }
+
+      /* ── Drill Panel ── */
+      #drill-panel {
+        position: fixed; right: -600px; top: 0; bottom: 0; width: 580px;
+        background: #fff; border-left: 1px solid #e4e9f5;
+        display: flex; flex-direction: column; z-index: 300;
+        box-shadow: -12px 0 48px rgba(30,36,51,.12);
+        transition: right .3s cubic-bezier(.16,1,.3,1);
+      }
+      #drill-panel.open { right: 0; }
+      .drill-header {
+        padding: 1.1rem 1.5rem; border-bottom: 1px solid #e4e9f5;
+        display: flex; align-items: flex-start; justify-content: space-between; flex-shrink: 0;
+        background: #fff;
+      }
+      .drill-title-block .drill-title { font-weight: 700; color: #1e2433; font-size: .95rem; }
+      .drill-title-block .drill-period { color: #4f6ef7; font-size: .72rem; margin-top: .1rem; font-weight: 600; }
+      .drill-title-block .drill-sub { color: #8b95a9; font-size: .72rem; }
+      .drill-close {
+        background: #f0f4ff; border: none; color: #8b95a9; cursor: pointer;
+        width: 28px; height: 28px; border-radius: 7px; font-size: .85rem;
+        display: flex; align-items: center; justify-content: center; transition: all .15s;
+      }
+      .drill-close:hover { background: #dce5ff; color: #4f6ef7; }
+      .drill-stats {
+        padding: .85rem 1.5rem; background: #f8f9fd;
+        display: flex; gap: 1.5rem; border-bottom: 1px solid #e4e9f5;
+        flex-shrink: 0; flex-wrap: wrap;
+      }
+      .drill-stat label { color: #8b95a9; font-size: .63rem; text-transform: uppercase; letter-spacing: .05em; display: block; margin-bottom: .15rem; font-weight: 600; }
+      .drill-stat .sv { font-size: .95rem; font-weight: 700; color: #1e2433; }
+      .drill-search { padding: .65rem 1.5rem; border-bottom: 1px solid #e4e9f5; flex-shrink: 0; background: #fff; }
+      .drill-search input {
+        width: 100%; background: #f4f6fb; border: 1px solid #e4e9f5;
+        color: #1e2433; border-radius: 8px; padding: .4rem .8rem; font-size: .78rem;
+        font-family: inherit; transition: all .15s;
+      }
+      .drill-search input:focus { outline: none; border-color: #4f6ef7; background: #fff; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+      .drill-table-wrap { flex: 1; overflow-y: auto; }
+      .drill-table { width: 100%; border-collapse: collapse; }
+      .drill-table thead th {
+        position: sticky; top: 0; background: #f8f9fd; padding: .4rem .85rem;
+        text-align: left; color: #a0aabb; font-size: .63rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .05em;
+        border-bottom: 1px solid #e4e9f5; z-index: 1;
+      }
+      .drill-table thead th.r { text-align: right; }
+      .drill-table tbody tr { border-bottom: 1px solid #f0f2f8; }
+      .drill-table tbody tr:hover { background: #f8f9fd; }
+      .drill-table td { padding: .45rem .85rem; font-size: .76rem; }
+      .td-date { color: #a0aabb; font-family: monospace; font-size: .7rem; white-space: nowrap; }
+      .td-doc { color: #c4cde0; font-family: monospace; font-size: .68rem; white-space: nowrap; }
+      .td-konto { color: #4f6ef7; font-family: monospace; font-size: .7rem; font-weight: 600; }
+      .td-gkto { color: #c4cde0; font-size: .67rem; }
+      .td-desc { color: #4b5563; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .td-amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
+      .sh-s { color: #dc2626; }
+      .sh-h { color: #16a34a; }
+      .sz { color: #c4cde0; }
+      .empty-state { padding: 2.5rem; text-align: center; color: #c4cde0; font-size: .82rem; }
+
+      /* ── Settings Panel ── */
+      #settings-panel {
+        position: fixed; right: -650px; top: 0; bottom: 0; width: 650px;
+        background: #fff; border-left: 1px solid #e4e9f5;
+        display: flex; flex-direction: column; z-index: 280;
+        box-shadow: -12px 0 48px rgba(30,36,51,.12);
+        transition: right .3s cubic-bezier(.16,1,.3,1);
+      }
+      #settings-panel.open { right: 0; }
+      .settings-header {
+        padding: 1.1rem 1.5rem; border-bottom: 1px solid #e4e9f5;
+        display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+      }
+      .settings-title { font-weight: 700; color: #1e2433; font-size: .95rem; }
+      .settings-close {
+        background: #f0f4ff; border: none; color: #8b95a9; cursor: pointer;
+        width: 28px; height: 28px; border-radius: 7px; font-size: .85rem;
+        display: flex; align-items: center; justify-content: center; transition: all .15s;
+      }
+      .settings-close:hover { background: #dce5ff; color: #4f6ef7; }
+      .settings-tabs {
+        display: flex; border-bottom: 1px solid #e4e9f5; background: #f8f9fd; flex-shrink: 0;
+      }
+      .settings-tab {
+        flex: 1; padding: .65rem 1.5rem; text-align: center;
+        color: #8b95a9; font-size: .78rem; font-weight: 600;
+        cursor: pointer; border: none; background: transparent; transition: all .15s; font-family: inherit;
+      }
+      .settings-tab.active { color: #4f6ef7; border-bottom: 2px solid #4f6ef7; margin-bottom: -1px; background: #fff; }
+      .settings-content { flex: 1; overflow-y: auto; padding: 1rem 1.5rem; }
+      .settings-section { margin-bottom: 1.5rem; }
+      .settings-section-title {
+        font-size: .75rem; font-weight: 700; color: #4f6ef7;
+        text-transform: uppercase; letter-spacing: .05em; margin-bottom: .7rem;
+      }
+
+      /* CoA Tree */
+      .coa-tree { display: flex; flex-direction: column; gap: .4rem; }
+      .coa-item { background: #f8f9fd; border: 1px solid #e4e9f5; border-radius: 10px; padding: .7rem; margin-bottom: .5rem; }
+      .coa-item-header { display: flex; align-items: center; gap: .4rem; margin-bottom: .4rem; }
+      .coa-item-label-input {
+        flex: 1; background: #fff; border: 1px solid #d6dff5; color: #1e2433;
+        border-radius: 7px; padding: .32rem .65rem; font-size: .78rem; min-width: 0; font-family: inherit;
+      }
+      .coa-item-label-input:focus { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+      .coa-selector {
+        background: #fff; border: 1px solid #d6dff5; color: #1e2433;
+        border-radius: 7px; padding: .32rem .65rem; font-size: .76rem; cursor: pointer; font-family: inherit;
+      }
+      .coa-selector:focus { outline: none; border-color: #4f6ef7; }
+      .coa-buttons { display: flex; gap: .25rem; }
+      .coa-btn {
+        padding: .28rem .55rem; border-radius: 6px; border: 1px solid #d6dff5;
+        background: #fff; color: #8b95a9; font-size: .7rem; cursor: pointer; transition: all .15s; font-family: inherit;
+      }
+      .coa-btn:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f0f4ff; }
+      .coa-subs { margin-top: .6rem; padding-left: 1rem; border-left: 2px solid #e4e9f5; }
+      .coa-sub { background: #fff; border: 1px solid #e4e9f5; border-radius: 8px; padding: .55rem; margin-bottom: .4rem; }
+      .coa-sub-header { display: flex; align-items: center; gap: .3rem; margin-bottom: .3rem; }
+      .coa-sub-label {
+        flex: 1; background: #f4f6fb; border: 1px solid #d6dff5; color: #1e2433;
+        border-radius: 6px; padding: .28rem .55rem; font-size: .75rem; font-family: inherit;
+      }
+      .coa-accounts { display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: .3rem; }
+      .coa-chip {
+        background: #eef1ff; border: 1px solid #d6dff5; border-radius: 20px;
+        padding: .18rem .55rem; font-size: .7rem; color: #4f6ef7;
+        display: inline-flex; align-items: center; gap: .3rem; white-space: nowrap; font-weight: 600;
+      }
+      .coa-chip-remove { cursor: pointer; color: #a0aabb; transition: all .15s; }
+      .coa-chip-remove:hover { color: #dc2626; }
+      .coa-add-account {
+        padding: .18rem .5rem; border-radius: 6px; border: 1px dashed #c7d0e8;
+        background: transparent; color: #a0aabb; font-size: .7rem; cursor: pointer;
+        transition: all .15s; font-family: inherit;
+      }
+      .coa-add-account:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f0f4ff; }
+      .coa-add-section {
+        width: 100%; padding: .42rem .65rem; margin-top: 1rem; border-radius: 8px;
+        border: 1px dashed #c7d0e8; background: transparent; color: #a0aabb;
+        font-size: .78rem; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit;
+      }
+      .coa-add-section:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f0f4ff; }
+
+      .settings-toolbar { display: flex; gap: .5rem; margin-bottom: 1rem; }
+      .settings-btn {
+        padding: .35rem .8rem; border-radius: 7px; border: 1px solid #d6dff5;
+        background: #fff; color: #8b95a9; font-size: .75rem; font-weight: 600;
+        cursor: pointer; transition: all .15s; font-family: inherit;
+      }
+      .settings-btn:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f0f4ff; }
+
+      /* Rules Tab */
+      .rules-section { margin-bottom: 1.5rem; }
+      .search-box {
+        background: #f4f6fb; border: 1px solid #d6dff5; color: #1e2433;
+        border-radius: 8px; padding: .5rem .8rem; font-size: .78rem;
+        width: 100%; margin-bottom: .5rem; font-family: inherit; transition: all .15s;
+      }
+      .search-box:focus { outline: none; border-color: #4f6ef7; background: #fff; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+      .match-count { color: #a0aabb; font-size: .75rem; margin-bottom: .5rem; }
+      .txn-preview-table { width: 100%; font-size: .7rem; border-collapse: collapse; margin-bottom: 1rem; }
+      .txn-preview-table thead th { background: #f4f6fb; padding: .3rem .4rem; text-align: left; color: #a0aabb; font-weight: 700; border-bottom: 1px solid #e4e9f5; }
+      .txn-preview-table tbody td { padding: .25rem .4rem; border-bottom: 1px solid #f0f2f8; color: #4b5563; }
+      .txn-preview-table tbody tr:hover { background: #f4f6fb; }
+
+      .rule-creator { background: #f8f9fd; border: 1px solid #e4e9f5; border-radius: 10px; padding: .85rem; margin-bottom: 1rem; }
+      .rule-creator-field { margin-bottom: .6rem; }
+      .rule-creator-label { display: block; font-size: .75rem; font-weight: 600; color: #1e2433; margin-bottom: .3rem; }
+      .rule-creator input[type="text"], .rule-creator select {
+        width: 100%; background: #fff; border: 1px solid #d6dff5;
+        color: #1e2433; border-radius: 7px; padding: .35rem .65rem;
+        font-size: .75rem; font-family: inherit;
+      }
+      .rule-creator input[type="text"]:focus, .rule-creator select:focus { outline: none; border-color: #4f6ef7; }
+      .rule-options { display: flex; gap: .3rem; flex-wrap: wrap; margin-bottom: .6rem; }
+      .rule-radio-label { display: flex; align-items: center; gap: .25rem; color: #4b5563; font-size: .75rem; cursor: pointer; white-space: nowrap; }
+      .rule-radio-label input[type="radio"] { cursor: pointer; }
+
+      .rules-list { margin-top: 1.5rem; }
+      .rule-item {
+        background: #f8f9fd; border: 1px solid #e4e9f5; border-radius: 10px;
+        padding: .65rem; margin-bottom: .5rem; display: flex; align-items: center; gap: .6rem;
+      }
+      .rule-toggle { width: 18px; height: 18px; cursor: pointer; }
+      .rule-details { flex: 1; font-size: .75rem; }
+      .rule-details-name { color: #1e2433; font-weight: 600; margin-bottom: .15rem; }
+      .rule-details-desc { color: #8b95a9; font-size: .7rem; }
+      .rule-actions { display: flex; gap: .25rem; }
+      .rule-action-btn {
+        padding: .25rem .5rem; border-radius: 6px; border: 1px solid #d6dff5;
+        background: #fff; color: #8b95a9; font-size: .7rem; cursor: pointer;
+        transition: all .15s; font-family: inherit;
+      }
+      .rule-action-btn:hover { border-color: #4f6ef7; color: #4f6ef7; }
+
+      /* ── Overlay ── */
+      #overlay {
+        position: fixed; inset: 0; background: rgba(30,36,51,.35);
+        z-index: 200; display: none; backdrop-filter: blur(3px);
+      }
+      #overlay.open { display: block; }
+
+      /* ── Toast ── */
+      #toast {
+        position: fixed; bottom: 2rem; left: 50%; transform: translateX(-50%);
+        background: #1e2433; color: #fff; border-radius: 12px;
+        padding: .75rem 1.5rem; display: none; font-size: .875rem;
+        z-index: 999; max-width: 450px; text-align: center;
+        box-shadow: 0 8px 32px rgba(0,0,0,.2);
+      }
+      #toast.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+
+      ::-webkit-scrollbar { width: 5px; height: 5px; }
+      ::-webkit-scrollbar-track { background: transparent; }
+      ::-webkit-scrollbar-thumb { background: #d6dff5; border-radius: 3px; }
+
+      /* ── KPI drag-and-drop ── */
+      .pl-summary { user-select: none; }
+      .kpi { cursor: grab; position: relative; }
+      .kpi.dragging { opacity: .35; cursor: grabbing; }
+      .kpi.drag-over-kpi { outline: 2px dashed #4f6ef7; outline-offset: 2px; }
+      .kpi-drag-handle {
+        position: absolute; top: .4rem; right: .45rem;
+        color: #d6dff5; font-size: .75rem; cursor: grab; line-height: 1;
+      }
+
+      /* ── CoA reorder buttons ── */
+      .coa-reorder { display: flex; flex-direction: column; gap: 1px; flex-shrink: 0; }
+      .coa-reorder-btn {
+        width: 18px; height: 18px; border: 1px solid #d6dff5; border-radius: 4px;
+        background: #fff; color: #a0aabb; font-size: .6rem; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+        transition: all .12s; padding: 0; font-family: inherit; line-height: 1;
+      }
+      .coa-reorder-btn:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f0f4ff; }
+      .coa-reorder-btn:disabled { opacity: .25; cursor: default; border-color: #e4e9f5; }
+
+      /* ── New Section Modal ── */
+      #new-section-modal {
+        display: none; position: fixed; inset: 0; z-index: 500;
+        align-items: center; justify-content: center;
+        background: rgba(30,36,51,.4); backdrop-filter: blur(4px);
+      }
+      #new-section-modal.open { display: flex; }
+      .modal-box {
+        background: #fff; border-radius: 16px; padding: 1.75rem;
+        width: 420px; max-width: calc(100vw - 2rem);
+        box-shadow: 0 20px 60px rgba(30,36,51,.18);
+      }
+      .modal-title { font-size: 1rem; font-weight: 700; color: #1e2433; margin-bottom: 1.25rem; }
+      .modal-field { margin-bottom: .9rem; }
+      .modal-label { display: block; font-size: .73rem; font-weight: 600; color: #8b95a9; text-transform: uppercase; letter-spacing: .05em; margin-bottom: .35rem; }
+      .modal-input, .modal-select {
+        width: 100%; background: #f4f6fb; border: 1px solid #d6dff5;
+        color: #1e2433; border-radius: 8px; padding: .42rem .7rem;
+        font-size: .82rem; font-family: inherit; transition: all .15s;
+      }
+      .modal-input:focus, .modal-select:focus { outline: none; border-color: #4f6ef7; background: #fff; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+      .modal-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; margin-bottom: .9rem; }
+      .modal-type-card {
+        border: 2px solid #e4e9f5; border-radius: 10px; padding: .75rem;
+        cursor: pointer; transition: all .15s; text-align: center;
+        background: #f8f9fd;
+      }
+      .modal-type-card:hover { border-color: #b0c0f7; background: #f0f4ff; }
+      .modal-type-card.selected { border-color: #4f6ef7; background: #eef1ff; }
+      .modal-type-card .tc-icon { font-size: 1.3rem; margin-bottom: .25rem; }
+      .modal-type-card .tc-label { font-size: .75rem; font-weight: 700; color: #1e2433; }
+      .modal-type-card .tc-desc { font-size: .67rem; color: #8b95a9; margin-top: .1rem; }
+      .modal-ratio-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: .5rem; align-items: center; margin-bottom: .9rem; }
+      .modal-ratio-divider { font-size: 1.1rem; color: #a0aabb; font-weight: 700; text-align: center; }
+      .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.25rem; }
+      .modal-btn { padding: .42rem 1rem; border-radius: 8px; font-size: .78rem; font-weight: 600; cursor: pointer; font-family: inherit; border: none; transition: all .15s; }
+      .modal-btn-cancel { background: #f4f6fb; color: #8b95a9; border: 1px solid #d6dff5; }
+      .modal-btn-cancel:hover { background: #e4e9f5; }
+      .modal-btn-ok { background: #4f6ef7; color: #fff; }
+      .modal-btn-ok:hover { background: #3d5ce5; }
+
+      /* ── Account Picker Dropdown ── */
+      .acct-picker-wrap { position: relative; }
+      .acct-picker-dropdown {
+        position: absolute; top: calc(100% + 4px); left: 0; z-index: 200;
+        background: #fff; border: 1px solid #d6dff5; border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(30,36,51,.14); width: 340px; max-width: 90vw;
+        display: flex; flex-direction: column; overflow: hidden;
+      }
+      .apd-search {
+        padding: .5rem .7rem; border-bottom: 1px solid #e4e9f5;
+        background: #f8f9fd; flex-shrink: 0;
+      }
+      .apd-search input {
+        width: 100%; background: #fff; border: 1px solid #d6dff5;
+        color: #1e2433; border-radius: 7px; padding: .32rem .65rem;
+        font-size: .78rem; font-family: inherit;
+      }
+      .apd-search input:focus { outline: none; border-color: #4f6ef7; }
+      .apd-list { max-height: 280px; overflow-y: auto; }
+      .apd-section-hdr {
+        padding: .3rem .7rem; font-size: .63rem; font-weight: 700;
+        text-transform: uppercase; letter-spacing: .06em; color: #a0aabb;
+        background: #f4f6fb; border-bottom: 1px solid #f0f2f8; position: sticky; top: 0;
+      }
+      .apd-item {
+        display: flex; align-items: center; gap: .5rem;
+        padding: .4rem .7rem; cursor: pointer; transition: background .1s;
+        border-bottom: 1px solid #f8f9fd;
+      }
+      .apd-item:hover { background: #f4f6fb; }
+      .apd-item-num { font-family: monospace; font-size: .75rem; font-weight: 700; color: #4f6ef7; min-width: 58px; }
+      .apd-item-name { font-size: .75rem; color: #1e2433; flex: 1; }
+      .apd-item-badge {
+        font-size: .63rem; font-weight: 600; border-radius: 20px;
+        padding: .1rem .45rem; white-space: nowrap;
+      }
+      .apd-badge-free { background: #dcfce7; color: #16a34a; }
+      .apd-badge-mapped { background: #eef1ff; color: #4f6ef7; }
+      .apd-badge-here { background: #f0f4ff; color: #8b95a9; }
+      .apd-item-unmap {
+        font-size: .63rem; color: #dc2626; cursor: pointer; padding: .1rem .3rem;
+        border-radius: 4px; border: 1px solid #fecaca; background: #fff;
+        font-family: inherit; font-weight: 600; display: none;
+      }
+      .apd-item:hover .apd-item-unmap.show { display: inline-block; }
+      .apd-empty { padding: 1rem; text-align: center; color: #a0aabb; font-size: .78rem; }
+
+      /* Ratio row in P&L */
+      tr.row-ratio td { font-weight: 600; color: #4f6ef7; font-size: .8rem; font-style: italic; }
+      tr.row-ratio td.td-pos { background: #f8f9fd; color: #4f6ef7; }
+      tr.row-ratio-sep td { padding: .1rem; background: transparent; border: none; }
+      tr.row-ratio-sep td.td-pos { background: transparent; }
+
+      /* Ratio item in CoA tree */
+      .coa-ratio-item { background: #f0f4ff; border: 1px solid #c7d4f5; border-radius: 10px; padding: .7rem; margin-bottom: .5rem; }
+      .coa-ratio-header { display: flex; align-items: center; gap: .4rem; margin-bottom: .6rem; }
+      .coa-ratio-formula { display: flex; align-items: center; gap: .5rem; }
+      .coa-ratio-formula select { flex: 1; background: #fff; border: 1px solid #d6dff5; color: #1e2433; border-radius: 7px; padding: .3rem .55rem; font-size: .75rem; font-family: inherit; }
+      .coa-ratio-div { font-size: 1.1rem; color: #a0aabb; font-weight: 700; }
+      .coa-ratio-badge { font-size: .63rem; background: #eef1ff; color: #4f6ef7; border-radius: 20px; padding: .1rem .45rem; font-weight: 700; }
+
+      /* ── App Shell ── */
+      #app-shell { display: flex; min-height: 100vh; }
+
+      /* ── Sidebar ── */
+      #sidebar {
+        width: 220px; flex-shrink: 0;
+        background: #fff; border-right: 1px solid #e4e9f5;
+        display: flex; flex-direction: column;
+        position: fixed; left: 0; top: 0; bottom: 0;
+        z-index: 90; transition: width .2s cubic-bezier(.4,0,.2,1);
+        overflow: hidden;
+      }
+      #sidebar.collapsed { width: 48px; }
+      #app-main { flex: 1; margin-left: 220px; transition: margin-left .2s cubic-bezier(.4,0,.2,1); min-width: 0; }
+      #app-shell.sb-collapsed #app-main { margin-left: 48px; }
+      #app-shell.sb-collapsed #sidebar { width: 48px; }
+
+      .sb-header {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: .85rem .75rem .85rem 1rem; border-bottom: 1px solid #e4e9f5;
+        flex-shrink: 0; min-height: 56px;
+      }
+      .sb-logo { display: flex; align-items: center; gap: .5rem; overflow: hidden; }
+      .sb-logo-text { font-weight: 700; color: #1e2433; font-size: .88rem; white-space: nowrap; overflow: hidden; }
+      .sb-collapse-btn {
+        flex-shrink: 0; width: 26px; height: 26px; border-radius: 7px;
+        background: #f4f6fb; border: 1px solid #e4e9f5; color: #a0aabb;
+        cursor: pointer; font-size: .7rem; display: flex; align-items: center; justify-content: center;
+        transition: all .15s; font-family: inherit;
+      }
+      .sb-collapse-btn:hover { background: #eef1ff; color: #4f6ef7; border-color: #c7d4f5; }
+
+      .sb-nav { padding: .5rem; flex: 1; display: flex; flex-direction: column; gap: .15rem; overflow: hidden; }
+      .sb-nav-item {
+        display: flex; align-items: center; gap: .75rem;
+        width: 100%; padding: .6rem .75rem; border: none; background: transparent;
+        color: #8b95a9; font-size: .82rem; font-weight: 500;
+        cursor: pointer; border-radius: 8px; transition: all .15s;
+        text-align: left; white-space: nowrap; font-family: inherit; line-height: 1.3;
+      }
+      .sb-nav-item:hover { background: #f4f6fb; color: #1e2433; }
+      .sb-nav-item.active { background: #eef1ff; color: #4f6ef7; font-weight: 600; }
+      .sb-nav-icon { font-size: 1rem; flex-shrink: 0; width: 20px; text-align: center; }
+      .sb-nav-label { overflow: hidden; text-overflow: ellipsis; }
+      .sb-nav-badge {
+        margin-left: auto; background: #4f6ef7; color: #fff;
+        font-size: .6rem; font-weight: 700; border-radius: 20px;
+        padding: .1rem .4rem; flex-shrink: 0;
+      }
+
+      .sb-footer {
+        padding: .5rem; border-top: 1px solid #e4e9f5; flex-shrink: 0;
+        display: flex; flex-direction: column; gap: .15rem;
+      }
+
+      /* ── Files Screen ── */
+      #files-screen { display: none; padding: 1.5rem; background: #f4f6fb; min-height: calc(100vh - 56px); }
+      .files-page-header { margin-bottom: 1.5rem; }
+      .files-page-title { font-size: 1.1rem; font-weight: 700; color: #1e2433; margin-bottom: .25rem; }
+      .files-page-sub { font-size: .78rem; color: #8b95a9; }
+      .files-list { display: flex; flex-direction: column; gap: .75rem; margin-bottom: 1.5rem; }
+      .file-card {
+        background: #fff; border: 1px solid #e4e9f5; border-radius: 14px;
+        padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,.04); transition: box-shadow .15s;
+      }
+      .file-card:hover { box-shadow: 0 4px 16px rgba(79,110,247,.09); }
+      .file-card-icon { font-size: 1.6rem; flex-shrink: 0; }
+      .file-card-info { flex: 1; min-width: 0; }
+      .file-card-name { font-weight: 600; color: #1e2433; font-size: .88rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .file-card-meta { color: #8b95a9; font-size: .73rem; margin-top: .25rem; line-height: 1.6; }
+      .file-card-tags { display: flex; gap: .35rem; margin-top: .35rem; flex-wrap: wrap; }
+      .file-tag {
+        background: #eef1ff; color: #4f6ef7; border-radius: 20px;
+        padding: .1rem .5rem; font-size: .65rem; font-weight: 600;
+      }
+      .file-tag-dupe { background: #fff7ed; color: #d97706; }
+      .file-card-remove {
+        flex-shrink: 0; padding: .35rem .75rem; border-radius: 8px;
+        border: 1px solid #fecaca; background: #fff; color: #dc2626;
+        font-size: .72rem; font-weight: 600; cursor: pointer; transition: all .15s; font-family: inherit;
+      }
+      .file-card-remove:hover { background: #fef2f2; border-color: #dc2626; }
+
+      .files-drop-zone {
+        border: 2px dashed #c7d0e8; border-radius: 14px;
+        padding: 2rem; text-align: center; cursor: pointer;
+        transition: all .2s; background: #fff;
+        box-shadow: 0 2px 8px rgba(79,110,247,.05);
+      }
+      .files-drop-zone:hover, .files-drop-zone.drag-over {
+        border-color: #4f6ef7; background: #f5f7ff;
+      }
+      .files-drop-zone-icon { font-size: 1.8rem; margin-bottom: .5rem; }
+      .files-drop-zone-title { font-size: .88rem; font-weight: 700; color: #1e2433; margin-bottom: .2rem; }
+      .files-drop-zone-sub { color: #8b95a9; font-size: .73rem; }
+      .dedup-info {
+        background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 10px;
+        padding: .75rem 1rem; margin-bottom: 1.5rem; font-size: .78rem; color: #15803d;
+        display: flex; align-items: center; gap: .6rem;
+      }
+      .dedup-info.hidden { display: none; }
+    </style>
+
+    <!-- New Section Modal -->
+    <div id="new-section-modal">
+      <div class="modal-box">
+        <div class="modal-title">Neue Sektion erstellen</div>
+        <div class="modal-field">
+          <label class="modal-label">Name</label>
+          <input type="text" class="modal-input" id="ns-name" placeholder="z.B. EBITDA Marge">
+        </div>
+        <div class="modal-field">
+          <label class="modal-label">Typ</label>
+          <div class="modal-type-grid">
+            <div class="modal-type-card selected" id="ns-type-section" onclick="selectNsType('section')">
+              <div class="tc-icon">📂</div>
+              <div class="tc-label">Kontengruppe</div>
+              <div class="tc-desc">Konten zuordnen & summieren</div>
+            </div>
+            <div class="modal-type-card" id="ns-type-ratio" onclick="selectNsType('ratio')">
+              <div class="tc-icon">📐</div>
+              <div class="tc-label">Kennzahl (Ratio)</div>
+              <div class="tc-desc">Zwei Werte dividieren</div>
+            </div>
+          </div>
+        </div>
+        <!-- Shown only for section -->
+        <div id="ns-balance-field" class="modal-field">
+          <label class="modal-label">Vorzeichen</label>
+          <select class="modal-select" id="ns-balance">
+            <option value="S">Aufwand (Soll / negativ)</option>
+            <option value="H">Ertrag (Haben / positiv)</option>
+          </select>
+        </div>
+        <!-- Shown only for ratio -->
+        <div id="ns-ratio-field" class="modal-field" style="display:none">
+          <label class="modal-label">Formel: Zähler ÷ Nenner × 100 %</label>
+          <div class="modal-ratio-row">
+            <select class="modal-select" id="ns-ratio-num" style="padding:.38rem .55rem"></select>
+            <div class="modal-ratio-divider">÷</div>
+            <select class="modal-select" id="ns-ratio-den" style="padding:.38rem .55rem"></select>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button class="modal-btn modal-btn-cancel" onclick="closeNewSectionModal()">Abbrechen</button>
+          <button class="modal-btn modal-btn-ok" onclick="confirmNewSection()">Erstellen</button>
+        </div>
+      </div>
+    </div>
+  </head>
+  <body>
+    <!-- ═══ UPLOAD ═══ -->
+    <div id="upload-screen">
+      <div class="app-logo"><span class="app-logo-badge">P&amp;L</span> Analyzer</div>
+      <div class="app-sub">GDPdU · Buchungssatzprotokoll · Monat / Quartal / YTD</div>
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-icon">🗂️</div>
+        <div class="drop-zone-title">GDPdU ZIP-Datei hochladen</div>
+        <div class="drop-zone-sub">Drag &amp; Drop oder klicken</div>
+        <input type="file" id="file-input" accept=".zip" />
+      </div>
+      <div class="hint-box">
+        <p>
+          GDPdU-ZIP mit <code>index.xml</code>,
+          <code>Buchungssatzprotokoll.csv</code> und
+          <code>Sachkontenstamm.csv</code>. Buchungsmonat wird aus
+          <code>Stapelnummer</code> (Format <code>01-2025/xxx</code>) gelesen.
+          Nur GuV-Konten werden berücksichtigt. Alle Daten bleiben lokal.
+        </p>
+      </div>
+    </div>
+
+    <!-- ═══ LOADING ═══ -->
+    <div id="loading-screen">
+      <div class="spinner"></div>
+      <div id="loading-text">Datei wird geladen…</div>
+    </div>
+
+    <!-- ═══ APP SHELL (sidebar + main) ═══ -->
+    <div id="app-shell" style="display:none">
+      <!-- Sidebar -->
+      <nav id="sidebar">
+        <div class="sb-header">
+          <div class="sb-logo">
+            <span class="app-logo-badge" style="font-size:.8rem;padding:.15rem .45rem">P&amp;L</span>
+            <span class="sb-logo-text">Analyzer</span>
+          </div>
+          <button class="sb-collapse-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">◀</button>
+        </div>
+        <div class="sb-nav">
+          <button class="sb-nav-item active" id="nav-pl" onclick="setMainView('pl-screen')">
+            <span class="sb-nav-icon">📊</span>
+            <span class="sb-nav-label">P&amp;L Statement</span>
+          </button>
+          <button class="sb-nav-item" id="nav-files" onclick="setMainView('files-screen')">
+            <span class="sb-nav-icon">🗂</span>
+            <span class="sb-nav-label">Dateien</span>
+            <span class="sb-nav-badge" id="sb-files-badge">0</span>
+          </button>
+        </div>
+        <div class="sb-footer">
+          <button class="sb-nav-item" onclick="toggleSettings()">
+            <span class="sb-nav-icon">⚙️</span>
+            <span class="sb-nav-label">Einstellungen</span>
+          </button>
+          <button class="sb-nav-item" onclick="resetAll()" style="color:#dc2626">
+            <span class="sb-nav-icon">↩</span>
+            <span class="sb-nav-label">Alles zurücksetzen</span>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Main area -->
+      <div id="app-main">
+
+    <!-- ═══ P&L ═══ -->
+    <div id="pl-screen">
+      <!-- Top Bar -->
+      <div class="top-bar">
+        <div>
+          <div class="top-title">P&amp;L Statement</div>
+          <div class="top-company" id="top-company"></div>
+        </div>
+        <div class="top-sep"></div>
+        <!-- View mode: Monat / Quartal -->
+        <div class="seg-ctrl" id="view-seg">
+          <button
+            class="seg-btn active"
+            data-mode="monat"
+            onclick="setViewMode('monat')"
+          >
+            Monat
+          </button>
+          <button
+            class="seg-btn"
+            data-mode="quartal"
+            onclick="setViewMode('quartal')"
+          >
+            Quartal
+          </button>
+        </div>
+        <div class="top-sep"></div>
+        <span class="lbl">Jahr</span>
+        <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
+        <button
+          class="btn-settings"
+          onclick="toggleSettings()"
+          title="Einstellungen"
+        >
+          ⚙️
+        </button>
+      </div>
+
+      <!-- KPI summary bar -->
+      <div style="padding: 1rem 1.5rem 0.5rem" id="kpi-bar"></div>
+
+      <!-- Unmapped warning -->
+      <details class="unmapped-bar hidden" id="unmapped-details">
+        <summary>⚠ Konten außerhalb GuV-Mapping gefunden</summary>
+        <div class="unmapped-list" id="unmapped-list"></div>
+      </details>
+
+      <!-- Table -->
+      <div class="pl-wrap">
+        <table class="pl-table" id="pl-table">
+          <thead id="pl-thead">
+            <tr>
+              <th class="th-pos">Position</th>
+            </tr>
+          </thead>
+          <tbody id="pl-tbody"></tbody>
+        </table>
+      </div>
+    </div><!-- /pl-screen -->
+
+    <!-- ═══ DATEIEN ═══ -->
+    <div id="files-screen">
+      <div class="files-page-header">
+        <div class="files-page-title">Geladene Dateien</div>
+        <div class="files-page-sub">Alle Daten bleiben lokal im Browser. Buchungen werden automatisch dedupliziert.</div>
+      </div>
+      <div class="dedup-info hidden" id="dedup-info-bar">
+        <span>✓</span>
+        <span id="dedup-info-text"></span>
+      </div>
+      <div class="files-list" id="files-list"></div>
+      <div class="files-drop-zone" id="drop-zone-extra"
+           ondrop="handleDrop(event,'extra')" ondragover="event.preventDefault();this.classList.add('drag-over')"
+           ondragleave="this.classList.remove('drag-over')"
+           onclick="document.getElementById('file-input-extra').click()">
+        <div class="files-drop-zone-icon">➕</div>
+        <div class="files-drop-zone-title">Weitere GDPdU-Datei hinzufügen</div>
+        <div class="files-drop-zone-sub">Drag &amp; Drop oder klicken · Duplikate werden automatisch entfernt</div>
+        <input type="file" id="file-input-extra" accept=".zip" style="display:none" onchange="handleFileInput(this)" />
+      </div>
+    </div><!-- /files-screen -->
+
+      </div><!-- /app-main -->
+    </div><!-- /app-shell -->
+
+    <!-- ═══ DRILL PANEL ═══ -->
+    <div id="overlay"></div>
+    <div id="drill-panel">
+      <div class="drill-header">
+        <div class="drill-title-block">
+          <div class="drill-title" id="drill-title">Buchungen</div>
+          <div class="drill-period" id="drill-period"></div>
+          <div class="drill-sub" id="drill-sub"></div>
+        </div>
+        <button class="drill-close" onclick="closeDrill()">✕</button>
+      </div>
+      <div class="drill-stats" id="drill-stats"></div>
+      <div class="drill-search">
+        <input
+          type="text"
+          id="drill-search"
+          placeholder="Suchen (Text, Beleg, Konto…)"
+          oninput="renderDrillTable()"
+        />
+      </div>
+      <div class="drill-table-wrap">
+        <table class="drill-table">
+          <thead>
+            <tr>
+              <th>Datum</th>
+              <th>Beleg</th>
+              <th>Kto</th>
+              <th>GKto</th>
+              <th>Buchungstext</th>
+              <th class="r">Soll</th>
+              <th class="r">Haben</th>
+            </tr>
+          </thead>
+          <tbody id="drill-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ SETTINGS PANEL ═══ -->
+    <div id="settings-panel">
+      <div class="settings-header">
+        <div class="settings-title">⚙️ Einstellungen</div>
+        <button class="settings-close" onclick="toggleSettings()">✕</button>
+      </div>
+      <div class="settings-tabs">
+        <button
+          class="settings-tab active"
+          onclick="switchSettingsTab('coa')"
+          data-tab="coa"
+        >
+          Kontenplan
+        </button>
+        <button
+          class="settings-tab"
+          onclick="switchSettingsTab('rules')"
+          data-tab="rules"
+        >
+          Buchungsregeln
+        </button>
+      </div>
+      <div class="settings-content">
+        <!-- CoA Tab -->
+        <div id="coa-tab" class="settings-tab-content">
+          <div class="settings-toolbar">
+            <button
+              class="settings-btn"
+              onclick="restoreDefaultPL()"
+              title="Standard wiederherstellen"
+            >
+              🔄 Standard
+            </button>
+            <button
+              class="settings-btn"
+              onclick="exportCoA()"
+              title="Als JSON exportieren"
+            >
+              ⬇ Export
+            </button>
+            <button
+              class="settings-btn"
+              onclick="importCoADialog()"
+              title="JSON importieren"
+            >
+              ⬆ Import
+            </button>
+          </div>
+          <div class="coa-tree" id="coa-tree"></div>
+          <button class="coa-add-section" onclick="addNewSection()">
+            + Neue Sektion
+          </button>
+        </div>
+        <!-- Rules Tab -->
+        <div id="rules-tab" class="settings-tab-content hidden">
+          <!-- Transaction Picker Section -->
+          <div class="rules-section">
+            <div style="margin-bottom: 1rem">
+              <input
+                type="text"
+                class="search-box"
+                id="txn-picker-search"
+                placeholder="Buchungen durchsuchen (alle Spalten)…"
+                oninput="updateTransactionPicker()"
+              />
+              <div
+                class="match-count"
+                id="txn-picker-count"
+                style="margin-top: 0.3rem; font-size: 0.75rem; color: #6b7280"
+              ></div>
+            </div>
+
+            <!-- Transaction Table -->
+            <div style="max-height:300px;overflow-y:auto;border:1px solid #e4e9f5;border-radius:8px;margin-bottom:1rem">
+              <table class="txn-picker-table" style="width:100%;border-collapse:collapse;font-size:.7rem">
+                <thead style="position:sticky;top:0;background:#f4f6fb;border-bottom:1px solid #e4e9f5">
+                  <tr>
+                    <th style="padding:.4rem;text-align:center;width:30px">
+                      <input type="checkbox" id="txn-select-all" onchange="toggleSelectAllTransactions()"/>
+                    </th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Datum</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Beleg</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Kto</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">GKto</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Text</th>
+                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Soll</th>
+                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Haben</th>
+                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Zugeordnet</th>
+                  </tr>
+                </thead>
+                <tbody id="txn-picker-tbody" style="background:#fff"></tbody>
+              </table>
+            </div>
+
+            <!-- Selection Info and Bulk Action -->
+            <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
+              <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">
+                <strong id="txn-selection-count">0 Buchungen</strong> ausgewählt
+              </div>
+              <div style="display:grid;gap:.5rem">
+                <label style="font-size:.75rem;color:#8b95a9;font-weight:600">Ausgewählte Buchungen zuordnen nach:</label>
+                <select id="txn-bulk-target-sub" style="padding:.4rem;background:#fff;color:#1e2433;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;font-family:inherit">
+                  <option value="">-- Kategorie wählen --</option>
+                </select>
+                <button onclick="applyBulkReclassification()" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
+                <button onclick="clearTransactionSelection()" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Rules List Section -->
+          <div style="margin-top:2rem;border-top:1px solid #e4e9f5;padding-top:1rem">
+            <div style="font-size:.8rem;color:#1e2433;margin-bottom:1rem;font-weight:600">Bestehende Regeln</div>
+            <div class="rules-list" id="rules-list"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script>
+      "use strict";
+
+      // ══════════════════════════════════════════════════════════════
+      // DEFAULT P&L DEFINITION
+      // ══════════════════════════════════════════════════════════════
+
+      const DEFAULT_PL_DEF = [
+        {
+          id: "revenue",
+          type: "section",
+          label: "Umsatzerlöse & Erträge",
+          normalBalance: "H",
+          subs: [
+            {
+              id: "rev_main",
+              label: "Umsatzerlöse",
+              accounts: [410000, 440000],
+              normalBalance: "H",
+            },
+            {
+              id: "rev_other",
+              label: "Sonstige betriebliche Erträge",
+              accounts: [484000, 484700, 493000, 494600, 497200],
+              normalBalance: "H",
+            },
+          ],
+        },
+        {
+          id: "gross_profit",
+          type: "computed",
+          label: "Rohertrag",
+          formula: [["revenue", +1]],
+          level: "mid",
+        },
+
+        {
+          id: "personnel",
+          type: "section",
+          label: "Personalaufwand",
+          normalBalance: "S",
+          subs: [
+            {
+              id: "pers_wages",
+              label: "Löhne & Gehälter",
+              accounts: [600000, 602000, 602700, 603900],
+              normalBalance: "S",
+            },
+            {
+              id: "pers_social",
+              label: "Sozialaufwendungen",
+              accounts: [606000, 611000, 612000, 613000],
+              normalBalance: "S",
+            },
+          ],
+        },
+        {
+          id: "opex",
+          type: "section",
+          label: "Sonstige betr. Aufwendungen",
+          normalBalance: "S",
+          subs: [
+            {
+              id: "opex_ext",
+              label: "Fremdleistungen",
+              accounts: [630300],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_events",
+              label: "Events & Community",
+              accounts: [630002, 630100, 663001, 663002],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_rent",
+              label: "Raumkosten & Infrastruktur",
+              accounts: [631000, 633000, 683500],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_mktg",
+              label: "Marketing & Werbung",
+              accounts: [660000, 661000, 662000, 662100, 663000],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_hosp",
+              label: "Bewirtung & Repräsentation",
+              accounts: [664000, 664300, 664400, 664500],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_travel",
+              label: "Reisekosten",
+              accounts: [665000, 666000, 666300, 666400],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_it",
+              label: "IT, Lizenzen & Software",
+              accounts: [681000, 683700, 683001],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_admin",
+              label: "Verwaltung, Beratung & Büro",
+              accounts: [
+                680000, 680500, 681500, 682000, 682100, 682500, 682700, 683000,
+                684500, 685000,
+              ],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_insur",
+              label: "Versicherungen & Beiträge",
+              accounts: [640000, 642000, 643600],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_bank",
+              label: "Bankgebühren & Geldverkehr",
+              accounts: [685500],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_fx",
+              label: "Währungsdifferenzen",
+              accounts: [688000, 688100],
+              normalBalance: "S",
+            },
+            {
+              id: "opex_misc",
+              label: "Periodenfremde Aufwendungen",
+              accounts: [696000],
+              normalBalance: "S",
+            },
+          ],
+        },
+        {
+          id: "ebitda",
+          type: "computed",
+          label: "EBITDA",
+          formula: [
+            ["revenue", +1],
+            ["personnel", -1],
+            ["opex", -1],
+          ],
+          level: "major",
+        },
+
+        {
+          id: "depreciation",
+          type: "section",
+          label: "Abschreibungen (D&A)",
+          normalBalance: "S",
+          subs: [
+            {
+              id: "dep_sach",
+              label: "AfA Sachanlagen",
+              accounts: [622000],
+              normalBalance: "S",
+            },
+          ],
+        },
+        {
+          id: "ebit",
+          type: "computed",
+          label: "EBIT",
+          formula: [
+            ["ebitda", +1],
+            ["depreciation", -1],
+          ],
+          level: "major",
+        },
+
+        {
+          id: "financial",
+          type: "section_mixed",
+          label: "Finanzergebnis",
+          subs: [
+            {
+              id: "fin_inc",
+              label: "Zinserträge",
+              accounts: [711000],
+              normalBalance: "H",
+            },
+            {
+              id: "fin_exp",
+              label: "Zinsaufw. & Steuernebenleistungen",
+              accounts: [730300, 731000],
+              normalBalance: "S",
+            },
+          ],
+        },
+        {
+          id: "ebt",
+          type: "computed",
+          label: "EBT (Ergebnis vor Steuern)",
+          formula: [
+            ["ebit", +1],
+            ["financial", +1],
+          ],
+          level: "final",
+        },
+      ];
+
+      // ══════════════════════════════════════════════════════════════
+      // UTILITIES
+      // ══════════════════════════════════════════════════════════════
+
+      function parseDE(s) {
+        s = String(s || "").trim();
+        if (!s) return 0;
+        try {
+          return parseFloat(s.replace(/\./g, "").replace(",", ".")) || 0;
+        } catch {
+          return 0;
+        }
+      }
+      function parseDateDE(s) {
+        s = String(s || "").trim();
+        const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+        if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+        return null;
+      }
+      function parseStapel(s) {
+        const m = String(s || "").match(/^(\d{2})-(\d{4})/);
+        if (m) return { month: +m[1], year: +m[2] };
+        return null;
+      }
+      function esc(s) {
+        return String(s || "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;");
+      }
+      function deepClone(obj) {
+        return JSON.parse(JSON.stringify(obj));
+      }
+
+      // Compact number formatter for period columns
+      function fmtK(n) {
+        if (n === 0) return "—";
+        const abs = Math.abs(n),
+          neg = n < 0;
+        let s;
+        if (abs >= 1e6) s = (abs / 1e6).toFixed(2).replace(".", ",") + " M";
+        else if (abs >= 1000)
+          s = Math.round(abs / 1000).toLocaleString("de-DE") + "k";
+        else s = Math.round(abs).toLocaleString("de-DE");
+        return (neg ? "−" : "") + s;
+      }
+      // Full format for YTD and drill
+      const FMTFULL = new Intl.NumberFormat("de-DE", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+      function fmtFull(n) {
+        return FMTFULL.format(n);
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.className = "error";
+        t.style.display = "block";
+        setTimeout(() => (t.style.display = "none"), 7000);
+      }
+      function setScreen(name) {
+        const fullScreens = ["upload-screen", "loading-screen"];
+        const shell = document.getElementById("app-shell");
+        if (fullScreens.includes(name)) {
+          shell.style.display = "none";
+          fullScreens.forEach(id => {
+            document.getElementById(id).style.display = id === name ? "flex" : "none";
+          });
+        } else {
+          // name is a sub-screen within app-shell (pl-screen or files-screen)
+          fullScreens.forEach(id => { document.getElementById(id).style.display = "none"; });
+          shell.style.display = "flex";
+          ["pl-screen","files-screen"].forEach(id => {
+            document.getElementById(id).style.display = id === name ? "block" : "none";
+          });
+          // update sidebar active states
+          document.getElementById("nav-pl").classList.toggle("active", name === "pl-screen");
+          document.getElementById("nav-files").classList.toggle("active", name === "files-screen");
+          if (name === "files-screen") renderFilesScreen();
+        }
+      }
+      function setMainView(name) {
+        setScreen(name);
+      }
+      function setLoading(msg) {
+        document.getElementById("loading-text").textContent = msg;
+        setScreen("loading-screen");
+      }
+      function resetAll() {
+        APP = {
+          allTransactions: [],
+          accountNames: new Map(),
+          plData: null,
+          drillTxns: [],
+          drillMeta: {},
+          expandedItems: new Set(),
+          expandedSubs: new Set(),
+          viewMode: "monat",
+          years: [],
+          companyName: "",
+          plDef: deepClone(DEFAULT_PL_DEF),
+          acctMap: new Map(),
+          rules: [],
+          loadedFiles: [],
+        };
+        document.getElementById("file-input").value = "";
+        const ei = document.getElementById("file-input-extra");
+        if (ei) ei.value = "";
+        closeDrill();
+        toggleSettings(false);
+        setScreen("upload-screen");
+      }
+
+      // Month labels
+      const MONTH_SHORT = [
+        "Jan",
+        "Feb",
+        "Mrz",
+        "Apr",
+        "Mai",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Okt",
+        "Nov",
+        "Dez",
+      ];
+
+      // ══════════════════════════════════════════════════════════════
+      // APP STATE
+      // ══════════════════════════════════════════════════════════════
+      let APP = {
+        allTransactions: [],
+        accountNames: new Map(),
+        plData: null,
+        drillTxns: [],
+        drillMeta: {},
+        expandedItems: new Set(),
+        expandedSubs: new Set(),
+        viewMode: "monat",
+        years: [],
+        companyName: "",
+        plDef: deepClone(DEFAULT_PL_DEF),
+        acctMap: new Map(),
+        rules: [],
+        loadedFiles: [],
+        txnKeys: new Set(),
+      };
+
+      // ══════════════════════════════════════════════════════════════
+      // PERSISTENT STORAGE
+      // ══════════════════════════════════════════════════════════════
+
+      function loadAppState() {
+        try {
+          const coa = localStorage.getItem("gdpdu_coa_v1");
+          if (coa) APP.plDef = JSON.parse(coa);
+          else APP.plDef = deepClone(DEFAULT_PL_DEF);
+        } catch {
+          APP.plDef = deepClone(DEFAULT_PL_DEF);
+        }
+        try {
+          const rules = localStorage.getItem("gdpdu_rules_v1");
+          if (rules) APP.rules = JSON.parse(rules);
+          else APP.rules = [];
+        } catch {
+          APP.rules = [];
+        }
+        rebuildAcctMap();
+      }
+
+      function saveCoA() {
+        localStorage.setItem("gdpdu_coa_v1", JSON.stringify(APP.plDef));
+        rebuildAcctMap();
+        buildPL();
+        renderCoATree();
+      }
+
+      function saveRules() {
+        localStorage.setItem("gdpdu_rules_v1", JSON.stringify(APP.rules));
+        buildPL();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // MULTI-FILE & DEDUPLICATION
+      // ══════════════════════════════════════════════════════════════
+
+      function mergeTransactions(newTxns, fileId) {
+        for (const t of newTxns) {
+          t._fileId = fileId;
+          APP.allTransactions.push(t);
+        }
+        return { added: newTxns.length, dupes: 0 };
+      }
+
+      function refreshYears() {
+        const years = new Set();
+        for (const t of APP.allTransactions) if (t.wjYear) years.add(t.wjYear);
+        APP.years = [...years].sort();
+        const ySel = document.getElementById("year-sel");
+        if (!ySel) return;
+        const prev = ySel.value;
+        ySel.innerHTML = "";
+        for (const y of APP.years) {
+          const opt = document.createElement("option");
+          opt.value = y; opt.textContent = y;
+          ySel.appendChild(opt);
+        }
+        if (APP.years.map(String).includes(String(prev))) ySel.value = prev;
+        else if (APP.years.length) ySel.value = APP.years[APP.years.length - 1];
+      }
+
+      function updateSidebarBadge() {
+        const b = document.getElementById("sb-files-badge");
+        if (b) b.textContent = APP.loadedFiles.length;
+      }
+
+      function removeFile(fileId) {
+        APP.allTransactions = APP.allTransactions.filter(t => t._fileId !== fileId);
+        APP.loadedFiles = APP.loadedFiles.filter(f => f.id !== fileId);
+        updateSidebarBadge();
+        if (APP.loadedFiles.length === 0) {
+          resetAll();
+        } else {
+          refreshYears();
+          updateTopCompany();
+          buildPL();
+          renderFilesScreen();
+        }
+      }
+
+      function updateTopCompany() {
+        const el = document.getElementById("top-company");
+        if (!el) return;
+        const names = [...new Set(APP.loadedFiles.map(f => f.companyName).filter(Boolean))];
+        el.textContent =
+          (names.length ? names.join(", ") + " · " : "") +
+          APP.allTransactions.length.toLocaleString("de-DE") + " Buchungszeilen";
+      }
+
+      function renderFilesScreen() {
+        const container = document.getElementById("files-list");
+        if (!container) return;
+        if (APP.loadedFiles.length === 0) {
+          container.innerHTML = '<div class="empty-state">Keine Dateien geladen</div>';
+          return;
+        }
+        container.innerHTML = APP.loadedFiles.map(f => `
+          <div class="file-card">
+            <div class="file-card-icon">📄</div>
+            <div class="file-card-info">
+              <div class="file-card-name">${esc(f.name)}</div>
+              <div class="file-card-meta">
+                ${f.txnCount.toLocaleString("de-DE")} Buchungen
+                · Hochgeladen: ${new Date(f.uploadedAt).toLocaleDateString("de-DE", {day:"2-digit",month:"2-digit",year:"numeric"})}
+              </div>
+              <div class="file-card-tags">
+                ${f.years.map(y => `<span class="file-tag">📅 ${y}</span>`).join("")}
+                ${f.companyName ? `<span class="file-tag">${esc(f.companyName)}</span>` : ""}
+              </div>
+            </div>
+            <button class="file-card-remove" onclick="removeFile('${f.id}')">✕ Entfernen</button>
+          </div>
+        `).join("");
+      }
+
+      function toggleSidebar() {
+        const shell = document.getElementById("app-shell");
+        shell.classList.toggle("sb-collapsed");
+        const btn = document.querySelector(".sb-collapse-btn");
+        if (btn) btn.textContent = shell.classList.contains("sb-collapsed") ? "▶" : "◀";
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // ACCOUNT MAPPING & RULES
+      // ══════════════════════════════════════════════════════════════
+
+      function rebuildAcctMap() {
+        APP.acctMap = new Map();
+        for (const item of APP.plDef) {
+          if (item.subs) {
+            for (const sub of item.subs) {
+              const nb = sub.normalBalance || item.normalBalance || "S";
+              for (const a of sub.accounts || []) {
+                APP.acctMap.set(a, {
+                  itemId: item.id,
+                  subId: sub.id,
+                  normalBalance: nb,
+                });
+              }
+            }
+          }
+        }
+      }
+
+      function getFieldVal(txn, field) {
+        switch (field) {
+          case "text":
+            return txn.text;
+          case "beleg":
+            return txn.beleg;
+          case "ktonr":
+            return txn.ktonr;
+          case "gktonr":
+            return txn.gktonr;
+          case "stapel":
+            return txn.stapelRaw;
+          default:
+            return txn.text;
+        }
+      }
+
+      function resolveMapping(txn) {
+        // Direct per-transaction mapping (from bulk reclassification)
+        if (txn._directMapping) {
+          const item = APP.plDef.find(i => i.id === txn._directMapping.itemId);
+          const sub  = item?.subs?.find(s => s.id === txn._directMapping.subId);
+          return { itemId: txn._directMapping.itemId, subId: txn._directMapping.subId,
+                   normalBalance: sub?.normalBalance || item?.normalBalance || 'S' };
+        }
+        // Check rules (in order, first match wins)
+        for (const rule of APP.rules) {
+          if (!rule.enabled) continue;
+          const fieldVal = getFieldVal(txn, rule.matchField);
+          const matchVal = (rule.matchValue || "").toLowerCase();
+          const fv = String(fieldVal || "").toLowerCase();
+          let hit = false;
+
+          if (rule.matchOp === "contains") hit = fv.includes(matchVal);
+          else if (rule.matchOp === "equals") hit = fv === matchVal;
+          else if (rule.matchOp === "starts") hit = fv.startsWith(matchVal);
+          else if (rule.matchOp === "any")
+            hit = ["text", "beleg", "ktonr", "gktonr", "stapel"].some((f) =>
+              String(getFieldVal(txn, f)).toLowerCase().includes(matchVal),
+            );
+
+          if (hit) {
+            const item = APP.plDef.find((i) => i.id === rule.targetItemId);
+            const sub = item?.subs?.find((s) => s.id === rule.targetSubId);
+            return {
+              itemId: rule.targetItemId,
+              subId: rule.targetSubId,
+              normalBalance: sub?.normalBalance || item?.normalBalance || "S",
+            };
+          }
+        }
+        return APP.acctMap.get(txn.ktonr) || null;
+      }
+
+      function getRulesAffectingItem(itemId) {
+        return APP.rules.filter((r) => r.enabled && r.targetItemId === itemId);
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // ZIP + GDPdU PARSING
+      // ══════════════════════════════════════════════════════════════
+
+      async function handleFile(file) {
+        if (!file || !file.name.toLowerCase().endsWith(".zip")) {
+          showToast("Bitte eine .zip-Datei auswählen.");
+          return;
+        }
+        setLoading("ZIP wird entpackt…");
+        try {
+          const zip = await JSZip.loadAsync(file);
+          const fm = {};
+          zip.forEach((p, e) => {
+            fm[p.toLowerCase()] = e;
+          });
+
+          let indexEntry;
+          for (const [k, v] of Object.entries(fm)) {
+            if (k === "index.xml" || k.endsWith("/index.xml")) {
+              indexEntry = v;
+              break;
+            }
+          }
+          const goBack = () => APP.loadedFiles.length > 0 ? setScreen("pl-screen") : setScreen("upload-screen");
+          if (!indexEntry) {
+            showToast("index.xml nicht gefunden.");
+            goBack(); return;
+          }
+
+          setLoading("index.xml wird geparst…");
+          const idxXml = tryDecode(await indexEntry.async("uint8array"));
+          const tableInfo = parseIndexXml(idxXml);
+
+          const bspInfo = tableInfo.find(
+            (t) =>
+              /buchungssatzprotokoll/i.test(t.name) ||
+              /buchungssatzprotokoll/i.test(t.url),
+          );
+          const skInfo = tableInfo.find(
+            (t) => /sachkont/i.test(t.name) || /sachkont/i.test(t.url),
+          );
+
+          if (!bspInfo) {
+            showToast("Buchungssatzprotokoll nicht gefunden.");
+            goBack(); return;
+          }
+
+          if (skInfo) {
+            const ske = fm[skInfo.url.toLowerCase()] || fm[skInfo.url];
+            if (ske) {
+              setLoading("Sachkontenstamm…");
+              parseSachkontenstamm(
+                tryDecode(await ske.async("uint8array")),
+                skInfo,
+              );
+            }
+          }
+
+          const bspe = fm[bspInfo.url.toLowerCase()] || fm[bspInfo.url];
+          if (!bspe) {
+            showToast(bspInfo.url + " nicht im ZIP.");
+            goBack();
+            return;
+          }
+
+          setLoading("Buchungen werden verarbeitet…");
+          await new Promise((r) => setTimeout(r, 20));
+          const newTxns = parseBSP(tryDecode(await bspe.async("uint8array")), bspInfo);
+
+          // Merge with deduplication
+          const fileId = "file_" + Date.now() + "_" + Math.random().toString(36).slice(2);
+          const { added, dupes } = mergeTransactions(newTxns, fileId);
+
+          // File years (from new transactions only, not deduped ones)
+          const fileYears = [...new Set(newTxns.map(t => t.wjYear).filter(Boolean))].sort();
+
+          APP.loadedFiles.push({
+            id: fileId,
+            name: file.name,
+            companyName: APP.companyName || "",
+            uploadedAt: new Date().toISOString(),
+            txnCount: added,
+            dupeCount: dupes,
+            years: fileYears,
+          });
+
+          updateSidebarBadge();
+          refreshYears();
+          updateTopCompany();
+
+          buildPL();
+          setScreen("pl-screen");
+          requestAnimationFrame(updateAboveTableHeight);
+        } catch (e) {
+          console.error(e);
+          showToast("Fehler: " + e.message);
+          if (APP.loadedFiles.length === 0) setScreen("upload-screen");
+          else setScreen("pl-screen");
+        }
+      }
+
+      function tryDecode(buf) {
+        try {
+          return new TextDecoder("utf-8", { fatal: true }).decode(buf);
+        } catch {
+          try {
+            return new TextDecoder("windows-1252").decode(buf);
+          } catch {
+            return new TextDecoder("iso-8859-1").decode(buf);
+          }
+        }
+      }
+
+      function parseIndexXml(xml) {
+        const doc = new DOMParser().parseFromString(xml, "text/xml");
+        const tables = [];
+        for (const tbl of doc.getElementsByTagName("Table")) {
+          const get = (tag) =>
+            tbl.getElementsByTagName(tag)[0]?.textContent?.trim() || "";
+          const url = get("URL");
+          if (!url) continue;
+          const name = get("Name") || url;
+          const vl = tbl.getElementsByTagName("VariableLength")[0];
+          const delimiter = vl
+            ? tbl.getElementsByTagName("ColumnDelimiter")[0]?.textContent || ";"
+            : ";";
+          const columns = [];
+          for (const tag of ["VariableColumn", "FixedColumn"])
+            for (const col of tbl.getElementsByTagName(tag)) {
+              const n =
+                col.getElementsByTagName("Name")[0]?.textContent?.trim() || "";
+              if (n) columns.push(n);
+            }
+          tables.push({ name, url, delimiter, columns });
+        }
+        return tables;
+      }
+
+      function parseSachkontenstamm(content, info) {
+        const cols = info.columns;
+        const ki = cols.indexOf("Ktonr"),
+          ti = cols.indexOf("Text");
+        if (ki < 0 || ti < 0) return;
+        const res = Papa.parse(content, {
+          delimiter: info.delimiter || ";",
+          quoteChar: '"',
+          skipEmptyLines: true,
+        });
+        for (const row of res.data) {
+          const k = parseInt(row[ki]),
+            t = String(row[ti] || "").trim();
+          if (!isNaN(k) && t) APP.accountNames.set(k, t);
+        }
+      }
+
+      function parseBSP(content, info) {
+        const cols = info.columns;
+        const fi = (n) => cols.indexOf(n);
+        const IDX = {
+          ktonr: fi("Ktonr"),
+          gktonr: fi("GKtonr"),
+          soll: fi("Umsatz_Soll"),
+          haben: fi("Umsatz_Haben"),
+          datum: fi("Belegdatum"),
+          text: fi("Buchungstext"),
+          beleg1: fi("Beleg1"),
+          stapel: fi("Stapelnummer"),
+          bsnr: fi("BSNr"),
+        };
+        if (IDX.ktonr < 0 || IDX.soll < 0 || IDX.haben < 0)
+          throw new Error("Pflichtfelder nicht in index.xml");
+
+        const res = Papa.parse(content, {
+          delimiter: info.delimiter || ";",
+          quoteChar: '"',
+          skipEmptyLines: true,
+          dynamicTyping: false,
+        });
+        const txns = [];
+
+        for (const row of res.data) {
+          if (row.length <= Math.max(IDX.ktonr, IDX.soll, IDX.haben)) continue;
+          const ktonr = parseInt(row[IDX.ktonr]);
+          if (isNaN(ktonr)) continue;
+
+          const gktonr = IDX.gktonr >= 0 ? parseInt(row[IDX.gktonr]) : NaN;
+          const soll = parseDE(IDX.soll >= 0 ? row[IDX.soll] : 0);
+          const haben = parseDE(IDX.haben >= 0 ? row[IDX.haben] : 0);
+          const datum = IDX.datum >= 0 ? parseDateDE(row[IDX.datum]) : null;
+          const text = IDX.text >= 0 ? String(row[IDX.text] || "").trim() : "";
+          const stapelRaw =
+            IDX.stapel >= 0 ? String(row[IDX.stapel] || "").trim() : "";
+          const b1 =
+            IDX.beleg1 >= 0 ? String(row[IDX.beleg1] || "").trim() : "";
+          const bsnr = IDX.bsnr >= 0 ? String(row[IDX.bsnr] || "").trim() : "";
+
+          const sp = parseStapel(stapelRaw);
+          const wjMonth = sp?.month || null;
+          const wjYear = sp?.year || null;
+          const beleg = b1 || bsnr || stapelRaw.slice(0, 20);
+
+          txns.push({
+            ktonr,
+            gktonr: isNaN(gktonr) ? null : gktonr,
+            soll,
+            haben,
+            datum,
+            text,
+            beleg,
+            wjMonth,
+            wjYear,
+            stapelRaw,
+          });
+        }
+        return txns;
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // P&L COMPUTATION
+      // ══════════════════════════════════════════════════════════════
+
+      function isInGUV(n) {
+        return (n >= 400000 && n <= 499999) || (n >= 600000 && n <= 799999);
+      }
+
+      function computePLSingle(txns) {
+        // Aggregate per resolved (itemId, subId) so that per-transaction overrides
+        // (_directMapping, rules) actually affect P&L numbers.
+        // key = "itemId::subId"
+        const subBal = new Map();
+
+        const unmapped = new Set();
+
+        for (const t of txns) {
+          const mapping = resolveMapping(t);
+          if (!mapping) {
+            if (isInGUV(t.ktonr)) unmapped.add(t.ktonr);
+            continue;
+          }
+          const key = mapping.itemId + '::' + mapping.subId;
+          if (!subBal.has(key)) subBal.set(key, { soll: 0, haben: 0, byAccount: {}, nb: mapping.normalBalance });
+          const b = subBal.get(key);
+          b.soll  += t.soll;
+          b.haben += t.haben;
+          // keep per-account breakdown for drill-down
+          const acct = t.ktonr;
+          if (!b.byAccount[acct]) b.byAccount[acct] = { soll: 0, haben: 0, txns: [] };
+          b.byAccount[acct].soll  += t.soll;
+          b.byAccount[acct].haben += t.haben;
+          b.byAccount[acct].txns.push(t);
+        }
+
+        function netAmt(soll, haben, nb) {
+          return nb === 'H' ? haben - soll : soll - haben;
+        }
+
+        const vals = {};
+        for (const item of APP.plDef) {
+          if (item.type === 'computed' || item.type === 'ratio') continue;
+          const bySubId = {};
+          let itemAmt = 0;
+          for (const sub of item.subs) {
+            const nb = sub.normalBalance || item.normalBalance || 'S';
+            const key = item.id + '::' + sub.id;
+            const b = subBal.get(key);
+            const subAmt = b ? netAmt(b.soll, b.haben, nb) : 0;
+            // per-account breakdown (use resolved nb for each account)
+            const byAccount = {};
+            if (b) {
+              for (const [acctStr, ab] of Object.entries(b.byAccount)) {
+                const net = netAmt(ab.soll, ab.haben, nb);
+                byAccount[+acctStr] = { amount: net, txns: ab.txns };
+              }
+            }
+            bySubId[sub.id] = { amount: subAmt, byAccount };
+            itemAmt += subAmt;
+          }
+          vals[item.id] = { amount: itemAmt, bySubId };
+        }
+
+        const computed = {};
+        function getVal(id) {
+          if (computed[id] !== undefined) return computed[id];
+          const item = APP.plDef.find((x) => x.id === id);
+          if (!item) return 0;
+          if (item.type === "computed") {
+            let v = 0;
+            for (const [dep, sign] of item.formula) v += getVal(dep) * sign;
+            computed[id] = v;
+            return v;
+          }
+          if (item.type === "ratio") {
+            const num = getVal(item.numerator);
+            const den = getVal(item.denominator);
+            computed[id] = den !== 0 ? (num / Math.abs(den)) * 100 : null;
+            return computed[id];
+          }
+          if (item.type === "section_mixed") {
+            let v = 0;
+            for (const sub of item.subs) {
+              const sa = vals[id]?.bySubId[sub.id]?.amount || 0;
+              v += sub.normalBalance === "H" ? sa : -sa;
+            }
+            computed[id] = v;
+            return v;
+          }
+          const raw = vals[id]?.amount || 0;
+          computed[id] = raw;
+          return raw;
+        }
+        for (const item of APP.plDef) getVal(item.id);
+
+        return { vals, computed, unmapped };
+      }
+
+      function computeAllPeriods() {
+        const year = parseInt(document.getElementById("year-sel").value);
+        const mode = APP.viewMode;
+        if (!year) return null;
+
+        const yearTxns = APP.allTransactions.filter((t) => t.wjYear === year);
+
+        const numP = mode === "monat" ? 12 : 4;
+        const periodPLs = [];
+        const periods = [];
+
+        for (let p = 1; p <= numP; p++) {
+          const pTxns =
+            mode === "monat"
+              ? yearTxns.filter((t) => t.wjMonth === p)
+              : yearTxns.filter(
+                  (t) => t.wjMonth && Math.ceil(t.wjMonth / 3) === p,
+                );
+          periodPLs.push(computePLSingle(pTxns));
+          const label = mode === "monat" ? MONTH_SHORT[p - 1] : `Q${p}`;
+          periods.push({ label, idx: p, txns: pTxns });
+        }
+
+        const ytdPL = computePLSingle(yearTxns);
+        return { periodPLs, ytdPL, periods, year, mode };
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // RENDER P&L TABLE
+      // ══════════════════════════════════════════════════════════════
+
+      function buildPL() {
+        const data = computeAllPeriods();
+        if (!data) {
+          return;
+        }
+        APP.plData = data;
+
+        const { periodPLs, ytdPL, periods, year, mode } = data;
+        const numP = periods.length;
+
+        // KPI Bar — data-driven, draggable
+        const revC = ytdPL.computed["revenue"] || 0;
+        const _kpiDefs = {
+          revenue:    { label: 'Umsatz YTD',    val: () => revC,                          sub: () => 'EUR' },
+          ebitda:     { label: 'EBITDA YTD',     val: () => ytdPL.computed["ebitda"]||0,  sub: v => revC ? ((v/revC)*100).toFixed(1)+'%' : '—' },
+          ebit:       { label: 'EBIT YTD',       val: () => ytdPL.computed["ebit"]||0,    sub: v => revC ? ((v/revC)*100).toFixed(1)+'%' : '—' },
+          ebt:        { label: 'EBT YTD',        val: () => ytdPL.computed["ebt"]||0,     sub: v => revC ? ((v/revC)*100).toFixed(1)+'%' : '—' },
+          personnel:  { label: 'Personalaufw.',  val: () => ytdPL.computed["personnel"]||0, sub: v => revC ? ((v/revC)*100).toFixed(1)+' % v. Umsatz' : '—' },
+        };
+        const kpiOrder = APP.kpiOrder || Object.keys(_kpiDefs);
+        const kpiBar = document.getElementById('kpi-bar');
+        kpiBar.innerHTML = `<div class="pl-summary" id="kpi-row">${
+          kpiOrder.map(k => {
+            const d = _kpiDefs[k]; if (!d) return '';
+            const v = d.val();
+            return `<div class="kpi" draggable="true" data-kpi="${k}">
+              <div class="kpi-drag-handle">⠿</div>
+              <div class="kpi-label">${d.label}</div>
+              <div class="kpi-val">${fmtFull(v)}</div>
+              <div class="kpi-sub">${d.sub(v)}</div>
+            </div>`;
+          }).join('')
+        }</div>`;
+        initKpiDrag();
+
+        // Table Header
+        const thead = document.getElementById("pl-thead");
+        let hRow = '<tr><th class="th-pos">Position</th>';
+        for (let i = 0; i < numP; i++) {
+          const p = periods[i];
+          let cls = "";
+          if (mode === "monat" && [3, 6, 9].includes(p.idx))
+            cls = " th-q" + Math.ceil(p.idx / 3);
+          if (mode === "quartal" && i > 0) cls = " q-start";
+          hRow += `<th class="${cls}" style="min-width:72px">${p.label}</th>`;
+        }
+        hRow += `<th class="th-ytd" style="min-width:88px">YTD ${year}</th></tr>`;
+        thead.innerHTML = hRow;
+
+        // Table Body
+        const tbody = document.getElementById("pl-tbody");
+        tbody.innerHTML = "";
+        const ytdRev = Math.max(ytdPL.computed["revenue"] || 0, 0.01);
+
+        function cellColor(v, nb, isMixed) {
+          if (v === 0) return "vz";
+          if (isMixed) return v > 0 ? "vp" : "vn";
+          return nb === "H" ? "vp" : "vn";
+        }
+
+        function makeCell(
+          v,
+          nb,
+          isMixed,
+          isYTD,
+          periodIdx,
+          acct,
+          subId,
+          itemId,
+        ) {
+          if (v === 0 && !isMixed)
+            return `<td class="cell-zero">${isYTD ? "—" : "—"}</td>`;
+          const cls = cellColor(v, nb, isMixed);
+          const sign = !isMixed && nb === "S" && v > 0 ? "− " : "";
+          const txt = isYTD ? fmtFull(Math.abs(v)) : fmtK(Math.abs(v));
+          const pct =
+            isYTD && ytdRev
+              ? ` (${((Math.abs(v) / ytdRev) * 100).toFixed(1)}%)`
+              : "";
+
+          let drillAttr = "";
+          if (acct !== undefined && periodIdx !== undefined) {
+            drillAttr = ` class="data-cell" onclick="openDrill(${acct},'${subId}','${itemId}',${periodIdx})"`;
+          }
+          return `<td${drillAttr}><span class="${cls}">${sign}${txt}</span><span class="vm" style="font-size:.65rem">${pct}</span></td>`;
+        }
+
+        function addRow(trClass, posHtml, cells) {
+          const tr = document.createElement("tr");
+          tr.className = "pl-row " + trClass;
+          const tdPos = document.createElement("td");
+          tdPos.className = "td-pos";
+          tdPos.innerHTML = posHtml;
+          tr.appendChild(tdPos);
+          for (const c of cells) {
+            tr.insertAdjacentHTML("beforeend", c);
+          }
+          tbody.appendChild(tr);
+          return tr;
+        }
+
+        function addSep() {
+          const tr = document.createElement("tr");
+          tr.className = "pl-row row-sep";
+          tr.innerHTML =
+            '<td class="td-pos"></td>' + "<td></td>".repeat(numP + 1);
+          tbody.appendChild(tr);
+        }
+
+        function addComputed(item) {
+          const v_arr = periodPLs.map((pl) => pl.computed[item.id] || 0);
+          const vYTD = ytdPL.computed[item.id] || 0;
+          const cls = vYTD > 0 ? "vp" : vYTD < 0 ? "vn" : "vm";
+
+          const tr = document.createElement("tr");
+          tr.className = `pl-row row-computed ${item.id}`;
+          let html = `<td class="td-pos">${esc(item.label)}</td>`;
+          for (let i = 0; i < numP; i++) {
+            const v = v_arr[i];
+            const vcls = v > 0 ? "vp" : v < 0 ? "vn" : "vm";
+            const qborder =
+              (mode === "monat" && [3, 6, 9].includes(periods[i].idx)) ||
+              (mode === "quartal" && i > 0)
+                ? "border-left:1px solid #e4e9f5"
+                : "";
+            html += `<td style="${qborder}"><span class="${vcls}">${fmtK(v)}</span></td>`;
+          }
+          html += `<td class="td-ytd"><span class="${cls}">${fmtFull(vYTD)}</span></td>`;
+          tr.innerHTML = html;
+          tbody.appendChild(tr);
+          addSep();
+        }
+
+        for (const item of APP.plDef) {
+          if (item.type === "computed") {
+            addComputed(item);
+            continue;
+          }
+
+          if (item.type === "ratio") {
+            const v_arr = periodPLs.map(pl => pl.computed[item.id]);
+            const vYTD = ytdPL.computed[item.id];
+            const fmtRatio = v => (v === null || v === undefined) ? '—' : v.toFixed(1) + ' %';
+            const clsRatio = v => (v === null || v === undefined) ? 'vm' : v >= 0 ? 'vp' : 'vn';
+            const tr = document.createElement('tr');
+            tr.className = 'pl-row row-ratio';
+            let html = `<td class="td-pos" style="color:#4f6ef7;font-style:italic">${esc(item.label)}</td>`;
+            for (let i = 0; i < numP; i++) {
+              const v = v_arr[i];
+              const qborder = (mode === 'monat' && [3,6,9].includes(periods[i].idx)) || (mode === 'quartal' && i > 0) ? 'border-left:1px solid #e4e9f5' : '';
+              html += `<td style="${qborder};color:#4f6ef7;font-weight:600">${fmtRatio(v)}</td>`;
+            }
+            html += `<td class="td-ytd" style="color:#4f6ef7">${fmtRatio(vYTD)}</td>`;
+            tr.innerHTML = html;
+            tbody.appendChild(tr);
+            addSep();
+            continue;
+          }
+
+          const nb = item.normalBalance || "S";
+          const isMixed = item.type === "section_mixed";
+          const isExp = APP.expandedItems.has(item.id);
+          const hasRules = getRulesAffectingItem(item.id).length > 0;
+
+          const v_arr = periodPLs.map((pl, i) =>
+            isMixed ? pl.computed[item.id] || 0 : pl.vals[item.id]?.amount || 0,
+          );
+          const vYTD = isMixed
+            ? ytdPL.computed[item.id] || 0
+            : ytdPL.vals[item.id]?.amount || 0;
+
+          const tr = document.createElement("tr");
+          tr.className = `pl-row row-section${isExp ? " open" : ""}`;
+          let posLabel = esc(item.label);
+          if (hasRules)
+            posLabel += `<span class="rule-indicator" title="Buchungsregeln aktiv"></span>`;
+          let html = `<td class="td-pos"><span class="expand-btn">▶</span>${posLabel}</td>`;
+          for (let i = 0; i < numP; i++) {
+            const v = v_arr[i];
+            const vcls = cellColor(v, nb, isMixed);
+            const sign = !isMixed && nb === "S" && v > 0 ? "− " : "";
+            const qborder =
+              (mode === "monat" && [3, 6, 9].includes(periods[i].idx)) ||
+              (mode === "quartal" && i > 0)
+                ? "border-left:1px solid #e4e9f5"
+                : "";
+            html += `<td style="${qborder}"><span class="${vcls}">${v === 0 ? "—" : sign + fmtK(Math.abs(v))}</span></td>`;
+          }
+          const yvcls = cellColor(vYTD, nb, isMixed);
+          const ysign = !isMixed && nb === "S" && vYTD > 0 ? "− " : "";
+          html += `<td class="td-ytd"><span class="${yvcls}">${vYTD === 0 ? "—" : ysign + fmtFull(Math.abs(vYTD))}</span></td>`;
+          tr.innerHTML = html;
+          tr.addEventListener("click", () => toggleSection(item.id));
+          tbody.appendChild(tr);
+
+          for (const sub of item.subs) {
+            const subNB = sub.normalBalance || nb;
+            const subIsExp = APP.expandedSubs.has(sub.id);
+
+            const sv_arr = periodPLs.map(
+              (pl) => pl.vals[item.id]?.bySubId[sub.id]?.amount || 0,
+            );
+            const svYTD = ytdPL.vals[item.id]?.bySubId[sub.id]?.amount || 0;
+
+            if (sv_arr.every((v) => v === 0) && svYTD === 0) continue;
+
+            const trSub = document.createElement("tr");
+            trSub.className = `pl-row row-sub${isExp ? "" : " hidden"}${subIsExp ? " open" : ""}`;
+            let shtmlSub = `<td class="td-pos"><span class="expand-btn">▶</span>${esc(sub.label)}</td>`;
+            for (let i = 0; i < numP; i++) {
+              const v = sv_arr[i];
+              const vcls = cellColor(v, subNB, false);
+              const sign = subNB === "S" && v > 0 ? "− " : "";
+              const qb =
+                (mode === "monat" && [3, 6, 9].includes(periods[i].idx)) ||
+                (mode === "quartal" && i > 0)
+                  ? "border-left:1px solid #e4e9f5"
+                  : "";
+              shtmlSub += `<td style="${qb}"><span class="${vcls}">${v === 0 ? "—" : sign + fmtK(Math.abs(v))}</span></td>`;
+            }
+            const svcls = cellColor(svYTD, subNB, false);
+            const sysign = subNB === "S" && svYTD > 0 ? "− " : "";
+            shtmlSub += `<td class="td-ytd"><span class="${svcls}">${svYTD === 0 ? "—" : sysign + fmtFull(Math.abs(svYTD))}</span></td>`;
+            trSub.innerHTML = shtmlSub;
+            trSub.addEventListener("click", (e) => {
+              e.stopPropagation();
+              toggleSub(item.id, sub.id);
+            });
+            tbody.appendChild(trSub);
+
+            const allAccts = new Set();
+            for (const pl of [...periodPLs, ytdPL]) {
+              const ba = pl.vals[item.id]?.bySubId[sub.id]?.byAccount || {};
+              for (const a of Object.keys(ba)) allAccts.add(+a);
+            }
+            for (const acct of [...allAccts].sort((a, b) => a - b)) {
+              const av_arr = periodPLs.map(
+                (pl) =>
+                  pl.vals[item.id]?.bySubId[sub.id]?.byAccount[acct]?.amount ||
+                  0,
+              );
+              const avYTD =
+                ytdPL.vals[item.id]?.bySubId[sub.id]?.byAccount[acct]?.amount ||
+                0;
+              if (av_arr.every((v) => v === 0) && avYTD === 0) continue;
+
+              const aName = APP.accountNames.get(acct) || "";
+              const visible = isExp && subIsExp;
+              const trA = document.createElement("tr");
+              trA.className = `pl-row row-acct${visible ? "" : " hidden"}`;
+              let ahtmlA = `<td class="td-pos">${acct}${aName ? " · " + esc(aName.slice(0, 28)) : ""}<span class="acct-drill">⬡</span></td>`;
+              for (let i = 0; i < numP; i++) {
+                const v = av_arr[i];
+                const vcls = cellColor(v, subNB, false);
+                const sign = subNB === "S" && v > 0 ? "− " : "";
+                const qb =
+                  (mode === "monat" && [3, 6, 9].includes(periods[i].idx)) ||
+                  (mode === "quartal" && i > 0)
+                    ? "border-left:1px solid #e4e9f5"
+                    : "";
+                ahtmlA += `<td style="${qb}" class="data-cell" onclick="openDrill(${acct},'${sub.id}','${item.id}',${i})"><span class="${vcls}">${v === 0 ? "—" : sign + fmtK(Math.abs(v))}</span></td>`;
+              }
+              const avcls = cellColor(avYTD, subNB, false);
+              const aysign = subNB === "S" && avYTD > 0 ? "− " : "";
+              ahtmlA += `<td class="td-ytd data-cell" onclick="openDrill(${acct},'${sub.id}','${item.id}',-1)"><span class="${avcls}">${avYTD === 0 ? "—" : aysign + fmtFull(Math.abs(avYTD))}</span></td>`;
+              trA.innerHTML = ahtmlA;
+              tbody.appendChild(trA);
+            }
+          }
+        }
+
+        const allUnmapped = new Set();
+        for (const pl of periodPLs)
+          for (const a of pl.unmapped) allUnmapped.add(a);
+        for (const a of ytdPL.unmapped) allUnmapped.add(a);
+        const ud = document.getElementById("unmapped-details");
+        const ul = document.getElementById("unmapped-list");
+        if (allUnmapped.size > 0) {
+          ud.classList.remove("hidden");
+          ul.innerHTML = [...allUnmapped]
+            .sort((a, b) => a - b)
+            .map((a) => {
+              const n = APP.accountNames.get(a) || "";
+              return `<span class="unmapped-tag" title="${esc(n)}">${a}${n ? " · " + esc(n.slice(0, 30)) : ""}</span>`;
+            })
+            .join("");
+        } else ud.classList.add("hidden");
+
+      }
+
+      function toggleSection(id) {
+        if (APP.expandedItems.has(id)) APP.expandedItems.delete(id);
+        else APP.expandedItems.add(id);
+        buildPL();
+      }
+
+      function toggleSub(itemId, subId) {
+        if (APP.expandedSubs.has(subId)) APP.expandedSubs.delete(subId);
+        else APP.expandedSubs.add(subId);
+        buildPL();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // VIEW MODE
+      // ══════════════════════════════════════════════════════════════
+
+      function setViewMode(mode) {
+        APP.viewMode = mode;
+        document.querySelectorAll('#view-seg .seg-btn').forEach(b =>
+          b.classList.toggle('active', b.dataset.mode === mode));
+        buildPL();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // DRILL-DOWN (placeholder kept for reference — dashboard removed)
+      // ══════════════════════════════════════════════════════════════
+
+      function buildDashboard() { /* removed */ return;
+        if (!APP.plData) return;
+        const { periodPLs, ytdPL, periods } = APP.plData;
+        const labels = periods.map(p => p.label);
+
+        const C = {
+          blue:   '#4f6ef7',
+          green:  '#22c55e',
+          red:    '#ef4444',
+          amber:  '#f59e0b',
+          purple: '#a78bfa',
+          gray:   '#374151',
+          gridLine: 'rgba(31,41,55,.6)',
+          text:   '#6b7280',
+        };
+
+        const baseOpts = (yFmt) => ({
+          responsive: true,
+          maintainAspectRatio: true,
+          plugins: { legend: { labels: { color: C.text, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ' ' + fmtFull(ctx.parsed.y) } } },
+          scales: {
+            x: { ticks: { color: C.text, font: { size: 10 } }, grid: { color: C.gridLine } },
+            y: { ticks: { color: C.text, font: { size: 10 }, callback: v => fmtK(v) }, grid: { color: C.gridLine } }
+          }
+        });
+
+        // ── 1. Revenue & Result line chart ──
+        destroyChart('revenue');
+        _charts['revenue'] = new Chart(document.getElementById('chart-revenue'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [
+              {
+                label: 'Umsatz',
+                data: periodPLs.map(pl => pl.computed['revenue'] || 0),
+                backgroundColor: 'rgba(79,110,247,.25)',
+                borderColor: C.blue, borderWidth: 2, borderRadius: 4,
+              },
+              {
+                label: 'EBITDA',
+                data: periodPLs.map(pl => pl.computed['ebitda'] || 0),
+                type: 'line', borderColor: C.green, backgroundColor: 'transparent',
+                pointRadius: 3, tension: 0.3,
+              },
+              {
+                label: 'EBT',
+                data: periodPLs.map(pl => pl.computed['ebt'] || 0),
+                type: 'line', borderColor: C.amber, backgroundColor: 'transparent',
+                pointRadius: 3, tension: 0.3, borderDash: [4,3],
+              },
+            ]
+          },
+          options: baseOpts()
+        });
+
+        // ── 2. Cost donut ──
+        destroyChart('costs');
+        const costSections = APP.plDef.filter(i => i.type === 'section' && i.normalBalance === 'S');
+        const donutLabels = costSections.map(i => i.label);
+        const donutVals   = costSections.map(i => Math.abs(ytdPL.vals[i.id]?.amount || ytdPL.computed[i.id] || 0));
+        const donutColors = ['#4f6ef7','#22c55e','#f59e0b','#a78bfa','#ef4444','#06b6d4','#84cc16'];
+        _charts['costs'] = new Chart(document.getElementById('chart-costs'), {
+          type: 'doughnut',
+          data: { labels: donutLabels, datasets: [{ data: donutVals, backgroundColor: donutColors.slice(0, donutLabels.length), borderWidth: 0 }] },
+          options: {
+            responsive: true, maintainAspectRatio: true, cutout: '62%',
+            plugins: {
+              legend: { position: 'bottom', labels: { color: C.text, font: { size: 10 }, boxWidth: 10, padding: 8 } },
+              tooltip: { callbacks: { label: ctx => ' ' + fmtFull(ctx.parsed) } }
+            }
+          }
+        });
+
+        // ── 3. Waterfall ──
+        destroyChart('waterfall');
+        const wfSteps = [
+          { label: 'Umsatz',       val: ytdPL.computed['revenue']     || 0, type: 'pos' },
+          { label: 'Personalaufw.',val: -(ytdPL.computed['personnel']  || 0), type: 'neg' },
+          { label: 'Betr. Aufw.',  val: -(ytdPL.computed['opex']      || 0), type: 'neg' },
+          { label: 'EBITDA',       val: ytdPL.computed['ebitda']       || 0, type: 'total' },
+          { label: 'D&A',          val: -(ytdPL.computed['depreciation']||0), type: 'neg' },
+          { label: 'EBIT',         val: ytdPL.computed['ebit']         || 0, type: 'total' },
+          { label: 'Finanzergebnis',val: ytdPL.computed['financial']   || 0, type: 'mix' },
+          { label: 'EBT',          val: ytdPL.computed['ebt']          || 0, type: 'total' },
+        ];
+        // Build floating bars: [base, top] for bar, solid for totals
+        let running = 0;
+        const wfBases=[], wfTops=[], wfColors=[];
+        for (const s of wfSteps) {
+          if (s.type === 'total') {
+            wfBases.push(Math.min(0, s.val));
+            wfTops.push(Math.max(0, s.val));
+            wfColors.push(s.val >= 0 ? C.blue : C.red);
+            running = s.val;
+          } else {
+            const base = running;
+            const top  = running + s.val;
+            wfBases.push(Math.min(base, top));
+            wfTops.push(Math.max(base, top));
+            wfColors.push(s.val >= 0 ? 'rgba(34,197,94,.7)' : 'rgba(239,68,68,.7)');
+            running = top;
+          }
+        }
+        _charts['waterfall'] = new Chart(document.getElementById('chart-waterfall'), {
+          type: 'bar',
+          data: {
+            labels: wfSteps.map(s => s.label),
+            datasets: [{
+              data: wfSteps.map((s,i) => [wfBases[i], wfTops[i]]),
+              backgroundColor: wfColors,
+              borderRadius: 4, borderSkipped: false,
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: true,
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: ctx => { const [b,t]=ctx.parsed; return ' ' + fmtFull(t-b); } } }
+            },
+            scales: {
+              x: { ticks: { color: C.text, font:{ size:10 } }, grid: { color: C.gridLine } },
+              y: { ticks: { color: C.text, font:{ size:10 }, callback: v => fmtK(v) }, grid: { color: C.gridLine } }
+            }
+          }
+        });
+
+        // ── 4. EBITDA margin % ──
+        destroyChart('margin');
+        _charts['margin'] = new Chart(document.getElementById('chart-margin'), {
+          type: 'line',
+          data: {
+            labels,
+            datasets: [{
+              label: 'EBITDA-Marge %',
+              data: periodPLs.map(pl => {
+                const r = pl.computed['revenue'] || 0;
+                return r ? +((pl.computed['ebitda'] || 0) / r * 100).toFixed(1) : null;
+              }),
+              borderColor: C.green, backgroundColor: 'rgba(34,197,94,.08)',
+              fill: true, pointRadius: 4, tension: 0.3,
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: true,
+            plugins: { legend: { labels: { color: C.text, font:{ size:11 } } }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + '%' } } },
+            scales: {
+              x: { ticks: { color: C.text, font:{ size:10 } }, grid: { color: C.gridLine } },
+              y: { ticks: { color: C.text, font:{ size:10 }, callback: v => v+'%' }, grid: { color: C.gridLine } }
+            }
+          }
+        });
+
+        // ── 5. Personnel ratio % ──
+        destroyChart('personnel');
+        _charts['personnel'] = new Chart(document.getElementById('chart-personnel'), {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Personalquote %',
+              data: periodPLs.map(pl => {
+                const r = pl.computed['revenue'] || 0;
+                return r ? +((pl.computed['personnel'] || 0) / r * 100).toFixed(1) : null;
+              }),
+              backgroundColor: 'rgba(167,139,250,.3)',
+              borderColor: C.purple, borderWidth: 2, borderRadius: 4,
+            }]
+          },
+          options: {
+            responsive: true, maintainAspectRatio: true,
+            plugins: { legend: { labels: { color: C.text, font:{ size:11 } } }, tooltip: { callbacks: { label: ctx => ' ' + ctx.parsed.y + '%' } } },
+            scales: {
+              x: { ticks: { color: C.text, font:{ size:10 } }, grid: { color: C.gridLine } },
+              y: { ticks: { color: C.text, font:{ size:10 }, callback: v => v+'%' }, grid: { color: C.gridLine } }
+            }
+          }
+        });
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // DRILL-DOWN
+      // ══════════════════════════════════════════════════════════════
+
+      function openDrill(acct, subId, itemId, periodIdx) {
+        const { periodPLs, ytdPL, periods, year, mode } = APP.plData;
+
+        let pl, periodLabel;
+        if (periodIdx === -1) {
+          pl = ytdPL;
+          periodLabel = `YTD ${year}`;
+        } else {
+          pl = periodPLs[periodIdx];
+          periodLabel = periods[periodIdx].label + " " + year;
+        }
+
+        const txns =
+          pl.vals[itemId]?.bySubId[subId]?.byAccount[acct]?.txns || [];
+        const aName = APP.accountNames.get(acct) || "";
+        const sub = APP.plDef
+          .flatMap((i) => i.subs || [])
+          .find((s) => s.id === subId);
+
+        document.getElementById("drill-title").textContent =
+          `${acct}${aName ? " · " + aName : ""}`;
+        document.getElementById("drill-period").textContent = periodLabel;
+        document.getElementById("drill-sub").textContent = sub?.label || "";
+        document.getElementById("drill-search").value = "";
+
+        const soll = txns.reduce((s, t) => s + t.soll, 0);
+        const haben = txns.reduce((s, t) => s + t.haben, 0);
+        document.getElementById("drill-stats").innerHTML = `
+    <div class="drill-stat"><label>Buchungen</label><span class="sv">${txns.length}</span></div>
+    <div class="drill-stat"><label>Soll-Summe</label><span class="sv">${fmtFull(soll)} €</span></div>
+    <div class="drill-stat"><label>Haben-Summe</label><span class="sv">${fmtFull(haben)} €</span></div>
+    <div class="drill-stat"><label>Saldo</label><span class="sv" style="color:${soll - haben >= 0 ? "#22c55e" : "#ef4444"}">${fmtFull(soll - haben)} €</span></div>
+  `;
+
+        APP.drillTxns = txns;
+        renderDrillTable();
+        document.getElementById("drill-panel").classList.add("open");
+        document.getElementById("overlay").classList.add("open");
+      }
+
+      function renderDrillTable() {
+        const search = document
+          .getElementById("drill-search")
+          .value.toLowerCase()
+          .trim();
+        const txns = APP.drillTxns;
+        const filtered = !search
+          ? txns
+          : txns.filter(
+              (t) =>
+                t.text?.toLowerCase().includes(search) ||
+                t.beleg?.toLowerCase().includes(search) ||
+                String(t.ktonr).includes(search) ||
+                String(t.gktonr || "").includes(search),
+            );
+
+        const tbody = document.getElementById("drill-tbody");
+        if (!filtered.length) {
+          tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">${search ? "Keine Treffer" : "Keine Buchungen"}</div></td></tr>`;
+          return;
+        }
+        const sorted = [...filtered].sort(
+          (a, b) => (b.datum || 0) - (a.datum || 0),
+        );
+        tbody.innerHTML = sorted
+          .map((t) => {
+            const d = t.datum
+              ? t.datum.toLocaleDateString("de-DE", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric",
+                })
+              : "—";
+            const gn = t.gktonr ? APP.accountNames.get(t.gktonr) || "" : "";
+            const gl = t.gktonr
+              ? `${t.gktonr}${gn ? " " + gn.slice(0, 15) : ""}`
+              : " ";
+            return `<tr>
+      <td class="td-date">${d}</td>
+      <td class="td-doc">${esc(t.beleg || "—")}</td>
+      <td class="td-konto">${t.ktonr}</td>
+      <td class="td-gkto" title="${esc(gn)}">${esc(gl.slice(0, 20))}</td>
+      <td class="td-desc" title="${esc(t.text)}">${esc(t.text || "—")}</td>
+      <td class="td-amt ${t.soll > 0 ? "sh-s" : "sz"}">${t.soll > 0 ? fmtFull(t.soll) : "—"}</td>
+      <td class="td-amt ${t.haben > 0 ? "sh-h" : "sz"}">${t.haben > 0 ? fmtFull(t.haben) : "—"}</td>
+    </tr>`;
+          })
+          .join("");
+      }
+
+      function closeDrill() {
+        document.getElementById("drill-panel").classList.remove("open");
+        document.getElementById("overlay").classList.remove("open");
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // SETTINGS PANEL
+      // ══════════════════════════════════════════════════════════════
+
+      function toggleSettings(show) {
+        const panel = document.getElementById("settings-panel");
+        const overlay = document.getElementById("overlay");
+        if (show === undefined) show = !panel.classList.contains("open");
+        panel.classList.toggle("open", show);
+        if (show) {
+          overlay.classList.add("open");
+          renderCoATree();
+          renderRulesList();
+        } else {
+          overlay.classList.remove("open");
+        }
+      }
+
+      function switchSettingsTab(tab) {
+        document
+          .querySelectorAll(".settings-tab")
+          .forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+        document
+          .querySelectorAll(".settings-tab-content")
+          .forEach((c) => c.classList.toggle("hidden", !c.id.startsWith(tab)));
+        if (tab === "rules") {
+          initTransactionPicker();
+        }
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // KONTENPLAN (CoA) TAB
+      // ══════════════════════════════════════════════════════════════
+
+      // Track open account picker
+      let _openPickerId = null;
+
+      function renderCoATree() {
+        const tree = document.getElementById("coa-tree");
+        tree.innerHTML = "";
+
+        // Build list of computed/ratio IDs for ratio selectors
+        const ratioTargets = APP.plDef
+          .filter(i => i.type === 'computed' || i.type === 'section' || i.type === 'section_mixed')
+          .map(i => `<option value="${i.id}">${esc(i.label)}</option>`)
+          .join('');
+
+        const defLen = APP.plDef.filter(i => i.type !== 'computed').length;
+        let visIdx = 0; // index among non-computed items for up/down
+
+        for (const item of APP.plDef) {
+          if (item.type === "computed") continue;
+          const isFirst = visIdx === 0;
+          const isLast  = visIdx === defLen - 1;
+          const reorderBtns = `
+            <div class="coa-reorder">
+              <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',-1)" title="Nach oben" ${isFirst?'disabled':''}>▲</button>
+              <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',+1)" title="Nach unten" ${isLast?'disabled':''}>▼</button>
+            </div>`;
+          visIdx++;
+
+          // ── Ratio item ──
+          if (item.type === "ratio") {
+            const itemDiv = document.createElement("div");
+            itemDiv.className = "coa-ratio-item";
+            itemDiv.innerHTML = `
+              <div class="coa-ratio-header">
+                ${reorderBtns}
+                <input type="text" class="coa-item-label-input" value="${esc(item.label)}" onchange="updateItemLabel('${item.id}',this.value)" style="flex:1">
+                <span class="coa-ratio-badge">% Kennzahl</span>
+                <button class="coa-btn" onclick="removeItem('${item.id}')" title="Löschen" style="margin-left:.3rem">×</button>
+              </div>
+              <div style="font-size:.68rem;color:#8b95a9;margin-bottom:.35rem;font-weight:600">Formel: Zähler ÷ Nenner × 100</div>
+              <div class="coa-ratio-formula">
+                <select onchange="updateRatioFormula('${item.id}','numerator',this.value)">
+                  ${APP.plDef.filter(i=>i.type==='computed'||i.type==='section'||i.type==='section_mixed').map(i=>`<option value="${i.id}" ${item.numerator===i.id?'selected':''}>${esc(i.label)}</option>`).join('')}
+                </select>
+                <div class="coa-ratio-div">÷</div>
+                <select onchange="updateRatioFormula('${item.id}','denominator',this.value)">
+                  ${APP.plDef.filter(i=>i.type==='computed'||i.type==='section'||i.type==='section_mixed').map(i=>`<option value="${i.id}" ${item.denominator===i.id?'selected':''}>${esc(i.label)}</option>`).join('')}
+                </select>
+              </div>`;
+            tree.appendChild(itemDiv);
+            continue;
+          }
+
+          const isMixed = item.type === "section_mixed";
+          const itemDiv = document.createElement("div");
+          itemDiv.className = "coa-item";
+
+          let html = `
+            <div class="coa-item-header">
+              ${reorderBtns}
+              <input type="text" class="coa-item-label-input" value="${esc(item.label)}" onchange="updateItemLabel('${item.id}',this.value)">
+              ${!isMixed
+                ? `<select class="coa-selector" onchange="updateItemBalance('${item.id}',this.value)">
+                    <option value="S" ${item.normalBalance==="S"?"selected":""}>Aufwand (S)</option>
+                    <option value="H" ${item.normalBalance==="H"?"selected":""}>Ertrag (H)</option>
+                  </select>`
+                : `<span style="color:#a0aabb;font-size:.72rem;font-weight:600">Mixed</span>`}
+              <div class="coa-buttons">
+                <button class="coa-btn" onclick="addSubDialog('${item.id}')" title="Unterkategorie hinzufügen">+ Sub</button>
+                <button class="coa-btn" onclick="removeItem('${item.id}')" title="Löschen">×</button>
+              </div>
+            </div>`;
+
+          if (item.subs) {
+            html += `<div class="coa-subs">`;
+            for (const sub of item.subs) {
+              const pickerId = `picker-${item.id}-${sub.id}`;
+              html += `
+                <div class="coa-sub">
+                  <div class="coa-sub-header">
+                    <input type="text" class="coa-sub-label" value="${esc(sub.label)}" onchange="updateSubLabel('${item.id}','${sub.id}',this.value)">
+                    <button class="coa-btn" onclick="removeSub('${item.id}','${sub.id}')" title="Löschen">×</button>
+                  </div>
+                  <div class="coa-accounts" id="chips-${item.id}-${sub.id}">
+                    ${(sub.accounts||[]).map(a=>`
+                      <span class="coa-chip">${a}${APP.accountNames.get(a)?' · '+esc(APP.accountNames.get(a).slice(0,18)):''}
+                        <span class="coa-chip-remove" onclick="removeAccount('${item.id}','${sub.id}',${a})">×</span>
+                      </span>`).join('')}
+                  </div>
+                  <div class="acct-picker-wrap" id="wrap-${pickerId}">
+                    <button class="coa-add-account" onclick="toggleAcctPicker('${item.id}','${sub.id}')">+ Konto hinzufügen</button>
+                    <div class="acct-picker-dropdown hidden" id="${pickerId}">
+                      <div class="apd-search">
+                        <input type="text" placeholder="Konto suchen (Nr. oder Name)…" oninput="filterAcctPicker('${item.id}','${sub.id}',this.value)" id="apd-input-${item.id}-${sub.id}" autocomplete="off">
+                      </div>
+                      <div class="apd-list" id="apd-list-${item.id}-${sub.id}"></div>
+                    </div>
+                  </div>
+                </div>`;
+            }
+            html += `</div>`;
+          }
+
+          itemDiv.innerHTML = html;
+          tree.appendChild(itemDiv);
+        }
+      }
+
+      function addSubDialog(itemId) {
+        const item = APP.plDef.find(i => i.id === itemId);
+        if (!item) return;
+        const newSubId = itemId + '_sub_' + Date.now();
+        item.subs.push({ id: newSubId, label: 'Neue Kategorie', accounts: [], normalBalance: item.normalBalance || 'S' });
+        saveCoA();
+      }
+
+      // Account picker logic
+      function toggleAcctPicker(itemId, subId) {
+        const pid = `picker-${itemId}-${subId}`;
+        const dropdown = document.getElementById(pid);
+        if (!dropdown) return;
+        const isOpen = !dropdown.classList.contains('hidden');
+
+        // Close any other open picker
+        if (_openPickerId && _openPickerId !== pid) {
+          const prev = document.getElementById(_openPickerId);
+          if (prev) prev.classList.add('hidden');
+        }
+
+        if (isOpen) {
+          dropdown.classList.add('hidden');
+          _openPickerId = null;
+        } else {
+          dropdown.classList.remove('hidden');
+          _openPickerId = pid;
+          filterAcctPicker(itemId, subId, '');
+          setTimeout(() => {
+            const inp = document.getElementById(`apd-input-${itemId}-${subId}`);
+            if (inp) inp.focus();
+          }, 50);
+        }
+      }
+
+      // Close picker on outside click
+      document.addEventListener('click', e => {
+        if (!_openPickerId) return;
+        const dropdown = document.getElementById(_openPickerId);
+        if (!dropdown) return;
+        if (!dropdown.closest('.acct-picker-wrap').contains(e.target)) {
+          dropdown.classList.add('hidden');
+          _openPickerId = null;
+        }
+      });
+
+      function filterAcctPicker(itemId, subId, query) {
+        const listEl = document.getElementById(`apd-list-${itemId}-${subId}`);
+        if (!listEl) return;
+        const item = APP.plDef.find(i => i.id === itemId);
+        const sub = item?.subs?.find(s => s.id === subId);
+        if (!sub) return;
+
+        const q = query.trim().toLowerCase();
+
+        // All known accounts (from accountNames + from all transactions)
+        const allAccts = new Set([...APP.accountNames.keys()]);
+        for (const t of APP.allTransactions) allAccts.add(t.ktonr);
+
+        // Categorise each account
+        const mapped = []; // mapped to THIS sub already
+        const free = [];   // in GuV range, not mapped anywhere
+        const elsewhere = []; // mapped to a different sub
+
+        for (const acct of [...allAccts].sort((a,b)=>a-b)) {
+          if (!isInGUV(acct)) continue;
+          const name = APP.accountNames.get(acct) || '';
+          if (q && !String(acct).includes(q) && !name.toLowerCase().includes(q)) continue;
+
+          const mapping = APP.acctMap.get(acct);
+          if (sub.accounts.includes(acct)) {
+            mapped.push({ acct, name });
+          } else if (!mapping) {
+            free.push({ acct, name });
+          } else {
+            // Find where it's mapped
+            const ownerItem = APP.plDef.find(i => i.id === mapping.itemId);
+            const ownerSub = ownerItem?.subs?.find(s => s.id === mapping.subId);
+            elsewhere.push({ acct, name, loc: `${ownerItem?.label||'?'} → ${ownerSub?.label||'?'}` });
+          }
+        }
+
+        if (!free.length && !elsewhere.length && !mapped.length) {
+          listEl.innerHTML = `<div class="apd-empty">Keine Konten gefunden</div>`;
+          return;
+        }
+
+        let html = '';
+
+        if (free.length) {
+          html += `<div class="apd-section-hdr">Nicht zugeordnet (${free.length})</div>`;
+          for (const { acct, name } of free) {
+            html += `<div class="apd-item" onclick="addAccountToSub('${itemId}','${subId}',${acct})">
+              <span class="apd-item-num">${acct}</span>
+              <span class="apd-item-name">${esc(name||'—')}</span>
+              <span class="apd-item-badge apd-badge-free">frei</span>
+            </div>`;
+          }
+        }
+
+        if (elsewhere.length) {
+          html += `<div class="apd-section-hdr">Anderweitig zugeordnet (${elsewhere.length})</div>`;
+          for (const { acct, name, loc } of elsewhere) {
+            html += `<div class="apd-item">
+              <span class="apd-item-num">${acct}</span>
+              <span class="apd-item-name" title="${esc(name)}">${esc((name||'—').slice(0,22))}</span>
+              <span class="apd-item-badge apd-badge-mapped" title="${esc(loc)}">${esc(loc.slice(0,20))}</span>
+              <button class="apd-item-unmap show" onclick="unmapAndMove('${itemId}','${subId}',${acct})" title="Umbuchen hierher">↩ hierher</button>
+            </div>`;
+          }
+        }
+
+        if (mapped.length) {
+          html += `<div class="apd-section-hdr">Bereits hier (${mapped.length})</div>`;
+          for (const { acct, name } of mapped) {
+            html += `<div class="apd-item">
+              <span class="apd-item-num">${acct}</span>
+              <span class="apd-item-name">${esc(name||'—')}</span>
+              <span class="apd-item-badge apd-badge-here">✓ hier</span>
+              <button class="apd-item-unmap show" onclick="removeAccount('${itemId}','${subId}',${acct})" style="color:#dc2626;border-color:#fecaca" title="Entfernen">× entf.</button>
+            </div>`;
+          }
+        }
+
+        listEl.innerHTML = html;
+      }
+
+      function addAccountToSub(itemId, subId, acct) {
+        const item = APP.plDef.find(i => i.id === itemId);
+        const sub = item?.subs?.find(s => s.id === subId);
+        if (sub && !sub.accounts.includes(acct)) {
+          sub.accounts.push(acct);
+          sub.accounts.sort((a,b) => a-b);
+          saveCoA();
+          // Refresh picker in place
+          const inp = document.getElementById(`apd-input-${itemId}-${subId}`);
+          filterAcctPicker(itemId, subId, inp?.value || '');
+        }
+      }
+
+      function unmapAndMove(targetItemId, targetSubId, acct) {
+        // Remove from current location
+        for (const it of APP.plDef) {
+          if (!it.subs) continue;
+          for (const s of it.subs) {
+            s.accounts = s.accounts.filter(a => a !== acct);
+          }
+        }
+        // Add to target
+        const item = APP.plDef.find(i => i.id === targetItemId);
+        const sub = item?.subs?.find(s => s.id === targetSubId);
+        if (sub && !sub.accounts.includes(acct)) {
+          sub.accounts.push(acct);
+          sub.accounts.sort((a,b) => a-b);
+        }
+        saveCoA();
+        const inp = document.getElementById(`apd-input-${targetItemId}-${targetSubId}`);
+        filterAcctPicker(targetItemId, targetSubId, inp?.value || '');
+      }
+
+      function updateItemLabel(itemId, label) {
+        const item = APP.plDef.find((i) => i.id === itemId);
+        if (item) item.label = label;
+        saveCoA();
+      }
+
+      function updateItemBalance(itemId, nb) {
+        const item = APP.plDef.find((i) => i.id === itemId);
+        if (item) item.normalBalance = nb;
+        saveCoA();
+      }
+
+      function updateSubLabel(itemId, subId, label) {
+        const item = APP.plDef.find((i) => i.id === itemId);
+        const sub = item?.subs?.find((s) => s.id === subId);
+        if (sub) sub.label = label;
+        saveCoA();
+      }
+
+      function removeAccount(itemId, subId, acct) {
+        const item = APP.plDef.find((i) => i.id === itemId);
+        const sub = item?.subs?.find((s) => s.id === subId);
+        if (sub) sub.accounts = sub.accounts.filter((a) => a !== acct);
+        saveCoA();
+      }
+
+      function removeSub(itemId, subId) {
+        const item = APP.plDef.find((i) => i.id === itemId);
+        if (item) item.subs = item.subs.filter((s) => s.id !== subId);
+        saveCoA();
+      }
+
+      function removeItem(itemId) {
+        APP.plDef = APP.plDef.filter((i) => i.id !== itemId);
+        saveCoA();
+      }
+
+      // ── New Section Modal ──
+      let _nsType = 'section';
+
+      function selectNsType(type) {
+        _nsType = type;
+        document.getElementById('ns-type-section').classList.toggle('selected', type === 'section');
+        document.getElementById('ns-type-ratio').classList.toggle('selected', type === 'ratio');
+        document.getElementById('ns-balance-field').style.display = type === 'section' ? '' : 'none';
+        document.getElementById('ns-ratio-field').style.display = type === 'ratio' ? '' : 'none';
+      }
+
+      function addNewSection() {
+        _nsType = 'section';
+        selectNsType('section');
+        document.getElementById('ns-name').value = '';
+
+        // Populate ratio selectors
+        const opts = APP.plDef
+          .filter(i => i.type === 'computed' || i.type === 'section' || i.type === 'section_mixed')
+          .map(i => `<option value="${i.id}">${esc(i.label)}</option>`)
+          .join('');
+        document.getElementById('ns-ratio-num').innerHTML = opts;
+        document.getElementById('ns-ratio-den').innerHTML = opts;
+
+        document.getElementById('new-section-modal').classList.add('open');
+        setTimeout(() => document.getElementById('ns-name').focus(), 80);
+      }
+
+      function closeNewSectionModal() {
+        document.getElementById('new-section-modal').classList.remove('open');
+      }
+
+      function confirmNewSection() {
+        const name = document.getElementById('ns-name').value.trim();
+        if (!name) { document.getElementById('ns-name').focus(); return; }
+
+        const newId = 'custom_' + Date.now();
+
+        if (_nsType === 'ratio') {
+          const num = document.getElementById('ns-ratio-num').value;
+          const den = document.getElementById('ns-ratio-den').value;
+          APP.plDef.push({ id: newId, type: 'ratio', label: name, numerator: num, denominator: den });
+        } else {
+          const nb = document.getElementById('ns-balance').value;
+          APP.plDef.push({
+            id: newId, type: 'section', label: name, normalBalance: nb,
+            subs: [{ id: newId + '_sub1', label: 'Neue Kategorie', accounts: [], normalBalance: nb }]
+          });
+        }
+
+        closeNewSectionModal();
+        saveCoA();
+      }
+
+      function updateRatioFormula(itemId, field, value) {
+        const item = APP.plDef.find(i => i.id === itemId);
+        if (item) item[field] = value;
+        saveCoA();
+      }
+
+      // Close modal on backdrop click
+      document.getElementById('new-section-modal').addEventListener('click', e => {
+        if (e.target === document.getElementById('new-section-modal')) closeNewSectionModal();
+      });
+
+      function restoreDefaultPL() {
+        if (confirm("Standard-Kontenplan wiederherstellen?")) {
+          APP.plDef = deepClone(DEFAULT_PL_DEF);
+          saveCoA();
+        }
+      }
+
+      function exportCoA() {
+        const json = JSON.stringify(APP.plDef, null, 2);
+        const blob = new Blob([json], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "gdpdu_coa_export.json";
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function importCoADialog() {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".json";
+        input.onchange = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (ee) => {
+            try {
+              const imported = JSON.parse(ee.target.result);
+              if (Array.isArray(imported)) {
+                APP.plDef = imported;
+                saveCoA();
+                showToast("Kontenplan importiert");
+              } else showToast("Ungültiges JSON-Format");
+            } catch (err) {
+              showToast("Import-Fehler: " + err.message);
+            }
+          };
+          reader.readAsText(file);
+        };
+        input.click();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // BUCHUNGSREGELN (Rules) TAB
+      // ══════════════════════════════════════════════════════════════
+
+      // Transaction Picker - new workflow
+      APP.selectedTransactions = new Set();
+
+      function initTransactionPicker() {
+        // Populate the bulk action dropdown
+        const subs = APP.plDef.flatMap((i) =>
+          i.subs
+            ? i.subs.map((s) => ({ ...s, itemLabel: i.label, itemId: i.id }))
+            : [],
+        );
+        const select = document.getElementById("txn-bulk-target-sub");
+        select.innerHTML = `<option value="">-- Kategorie wählen --</option>${subs.map((s) => `<option value="${s.itemId}|${s.id}">${esc(s.itemLabel)} → ${esc(s.label)}</option>`).join("")}`;
+
+        // Initialize transaction picker
+        updateTransactionPicker();
+      }
+
+      function updateTransactionPicker() {
+        const query = document
+          .getElementById("txn-picker-search")
+          .value.toLowerCase()
+          .trim();
+
+        // Index into allTransactions so selection survives filtering
+        let indexedAll = APP.allTransactions.map((t, i) => ({ t, i }));
+
+        if (query) {
+          indexedAll = indexedAll.filter(({ t }) =>
+            t.text?.toLowerCase().includes(query) ||
+            t.beleg?.toLowerCase().includes(query) ||
+            String(t.ktonr).includes(query) ||
+            String(t.gktonr || "").includes(query) ||
+            t.stapelRaw?.toLowerCase().includes(query)
+          );
+        }
+
+        const MAX = 500;
+        const truncated = indexedAll.length > MAX;
+        const visible = indexedAll.slice(0, MAX);
+
+        document.getElementById("txn-picker-count").textContent =
+          `${indexedAll.length.toLocaleString('de-DE')} von ${APP.allTransactions.length.toLocaleString('de-DE')} Buchungen` +
+          (truncated ? ` (nur erste ${MAX} angezeigt — Suche verfeinern)` : '');
+
+        // Build transaction table
+        const tbody = document.getElementById("txn-picker-tbody");
+
+        if (!APP.allTransactions.length) {
+          tbody.innerHTML = `<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:#a0aabb;font-size:.78rem">Keine Datei geladen.</td></tr>`;
+          return;
+        }
+        if (!visible.length) {
+          tbody.innerHTML = `<tr><td colspan="9" style="padding:1.5rem;text-align:center;color:#a0aabb;font-size:.78rem">Keine Buchungen gefunden.</td></tr>`;
+          return;
+        }
+
+        tbody.innerHTML = visible
+          .map(({ t, i }) => {
+            const mapping = resolveMapping(t);
+            const currentCat = mapping
+              ? (APP.plDef.find(x => x.id === mapping.itemId)?.label || '?') +
+                ' / ' +
+                (APP.plDef.find(x => x.id === mapping.itemId)?.subs?.find(s => s.id === mapping.subId)?.label || '?')
+              : '—';
+            const d = t.datum
+              ? t.datum.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })
+              : "—";
+            const isSelected = APP.selectedTransactions.has(i);
+            const soll  = t.soll  ? fmtFull(t.soll)  : "—";
+            const haben = t.haben ? fmtFull(t.haben) : "—";
+
+            return `<tr style="border-bottom:1px solid #f0f2f8" onmouseover="this.style.background='#f8f9fd'" onmouseout="this.style.background=''">
+      <td style="padding:.3rem;text-align:center"><input type="checkbox" data-txn-idx="${i}" ${isSelected ? "checked" : ""} onchange="toggleTransactionSelection(${i})"></td>
+      <td style="padding:.3rem;color:#8b95a9;font-size:.68rem">${d}</td>
+      <td style="padding:.3rem;max-width:60px;overflow:hidden;text-overflow:ellipsis;color:#a0aabb;font-size:.68rem">${esc(t.beleg || "—")}</td>
+      <td style="padding:.3rem;color:#4f6ef7;font-weight:600">${t.ktonr}</td>
+      <td style="padding:.3rem;color:#c4cde0;font-size:.67rem">${t.gktonr || "—"}</td>
+      <td style="padding:.3rem;max-width:100px;overflow:hidden;text-overflow:ellipsis;color:#4b5563">${esc((t.text||'').slice(0, 40))}</td>
+      <td style="padding:.3rem;text-align:right;color:#dc2626;font-weight:600">${soll}</td>
+      <td style="padding:.3rem;text-align:right;color:#16a34a;font-weight:600">${haben}</td>
+      <td style="padding:.3rem;font-size:.65rem;max-width:80px;overflow:hidden;text-overflow:ellipsis;color:#8b95a9">${esc(String(currentCat).slice(0, 28))}</td>
+    </tr>`;
+          })
+          .join("");
+
+        // Update select all checkbox state
+        const allCheckboxes = document.querySelectorAll("[data-txn-idx]");
+        const selectAllCheckbox = document.getElementById("txn-select-all");
+        if (allCheckboxes.length > 0) {
+          const allChecked = [...allCheckboxes].every((cb) => cb.checked);
+          selectAllCheckbox.checked = allChecked;
+        }
+
+        updateTransactionSelectionPanel();
+      }
+
+      function toggleTransactionSelection(idx) {
+        if (APP.selectedTransactions.has(idx)) {
+          APP.selectedTransactions.delete(idx);
+        } else {
+          APP.selectedTransactions.add(idx);
+        }
+        updateTransactionPicker();
+      }
+
+      function toggleSelectAllTransactions() {
+        const allCheckboxes = document.querySelectorAll("[data-txn-idx]");
+        const checked = document.getElementById("txn-select-all").checked;
+        APP.selectedTransactions.clear();
+        if (checked) {
+          allCheckboxes.forEach((cb) => {
+            const idx = parseInt(cb.dataset.txnIdx);
+            APP.selectedTransactions.add(idx);
+          });
+        }
+        updateTransactionPicker();
+      }
+
+      function updateTransactionSelectionPanel() {
+        const panel = document.getElementById("txn-selection-panel");
+        const count = APP.selectedTransactions.size;
+        if (count > 0) {
+          document.getElementById("txn-selection-count").textContent =
+            `${count} Buchung${count !== 1 ? "en" : ""}`;
+          panel.style.display = "block";
+        } else {
+          panel.style.display = "none";
+        }
+      }
+
+      function applyBulkReclassification() {
+        const targetVal = document.getElementById("txn-bulk-target-sub").value;
+        if (!targetVal) {
+          showToast("Bitte Kategorie wählen");
+          return;
+        }
+
+        const [targetItemId, targetSubId] = targetVal.split("|");
+        const selectedIndices = [...APP.selectedTransactions];
+
+        // selectedIndices are direct indices into APP.allTransactions
+        selectedIndices.forEach((idx) => {
+          const txn = APP.allTransactions[idx];
+          if (txn) {
+            txn._directMapping = { itemId: targetItemId, subId: targetSubId };
+          }
+        });
+
+        showToast(
+          `${selectedIndices.length} Buchung${selectedIndices.length !== 1 ? "en" : ""} zugeordnet`,
+        );
+        clearTransactionSelection();
+        buildPL();
+      }
+
+      function clearTransactionSelection() {
+        APP.selectedTransactions.clear();
+        document.getElementById("txn-picker-search").value = "";
+        document.getElementById("txn-select-all").checked = false;
+        updateTransactionPicker();
+      }
+
+      function renderRulesList() {
+        const list = document.getElementById("rules-list");
+        if (!APP.rules.length) {
+          list.innerHTML =
+            '<div style="color:#a0aabb;font-size:.78rem;padding:1rem;text-align:center">Noch keine Regeln erstellt</div>';
+          return;
+        }
+
+        list.innerHTML = APP.rules
+          .map((rule, idx) => {
+            const item = APP.plDef.find((i) => i.id === rule.targetItemId);
+            const sub = item?.subs?.find((s) => s.id === rule.targetSubId);
+            const desc = `${rule.matchOp} "${rule.matchValue}" → ${item?.label || "?"} / ${sub?.label || "?"}`;
+
+            return `
+      <div class="rule-item">
+        <input type="checkbox" class="rule-toggle" ${rule.enabled ? "checked" : ""} onchange="toggleRule('${rule.id}')">
+        <div class="rule-details">
+          <div class="rule-details-name">${esc(rule.name)}</div>
+          <div class="rule-details-desc">${esc(desc)}</div>
+        </div>
+        <div class="rule-actions">
+          <button class="rule-action-btn" onclick="deleteRule('${rule.id}')">×</button>
+        </div>
+      </div>
+    `;
+          })
+          .join("");
+      }
+
+      function toggleRule(ruleId) {
+        const rule = APP.rules.find((r) => r.id === ruleId);
+        if (rule) rule.enabled = !rule.enabled;
+        saveRules();
+      }
+
+      function deleteRule(ruleId) {
+        APP.rules = APP.rules.filter((r) => r.id !== ruleId);
+        saveRules();
+      }
+
+      // ══════════════════════════════════════════════════════════════
+      // EVENT LISTENERS
+      // ══════════════════════════════════════════════════════════════
+
+      function handleDrop(e, source) {
+        e.preventDefault();
+        const dz = source === 'extra' ? document.getElementById('drop-zone-extra') : document.getElementById('drop-zone');
+        if (dz) dz.classList.remove('drag-over');
+        if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+      }
+      function handleFileInput(input) {
+        if (input.files[0]) handleFile(input.files[0]);
+        input.value = "";
+      }
+
+      function initApp() {
+        loadAppState();
+        const dropZone = document.getElementById("drop-zone");
+        const fileInput = document.getElementById("file-input");
+        dropZone.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", (e) =>
+          handleFile(e.target.files[0]),
+        );
+        dropZone.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          dropZone.classList.add("drag-over");
+        });
+        dropZone.addEventListener("dragleave", () =>
+          dropZone.classList.remove("drag-over"),
+        );
+        dropZone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          dropZone.classList.remove("drag-over");
+          handleFile(e.dataTransfer.files[0]);
+        });
+        document.getElementById("overlay").addEventListener("click", () => {
+          if (document.getElementById("drill-panel").classList.contains("open"))
+            closeDrill();
+          else if (
+            document.getElementById("settings-panel").classList.contains("open")
+          )
+            toggleSettings(false);
+        });
+      }
+
+      initApp();
+
+      // ══════════════════════════════════════════════════════════════
+      // TOPBAR HEIGHT → sticky table header offset
+      // ══════════════════════════════════════════════════════════════
+      function updateAboveTableHeight() {
+        const wrap = document.getElementById('pl-screen')?.querySelector('.pl-wrap');
+        if (!wrap) return;
+        const rect = wrap.getBoundingClientRect();
+        if (rect.top > 0) {
+          document.documentElement.style.setProperty('--above-table-h', rect.top + 'px');
+        }
+      }
+      window.addEventListener('resize', updateAboveTableHeight);
+
+      // ══════════════════════════════════════════════════════════════
+      // KPI DRAG-AND-DROP REORDER
+      // ══════════════════════════════════════════════════════════════
+      const KPI_DEFAULT_ORDER = ['revenue','ebitda','ebit','ebt','personnel'];
+
+      function loadKpiOrder() {
+        try { const s = localStorage.getItem('gdpdu_kpi_order'); if (s) return JSON.parse(s); } catch {}
+        return [...KPI_DEFAULT_ORDER];
+      }
+      function saveKpiOrder(order) {
+        APP.kpiOrder = order;
+        localStorage.setItem('gdpdu_kpi_order', JSON.stringify(order));
+      }
+
+      // Called after kpi-bar is rebuilt each buildPL
+      function initKpiDrag() {
+        APP.kpiOrder = loadKpiOrder();
+        let dragSrc = null;
+
+        document.querySelectorAll('.kpi[draggable]').forEach(el => {
+          el.addEventListener('dragstart', e => {
+            dragSrc = el;
+            el.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+          });
+          el.addEventListener('dragend', () => {
+            el.classList.remove('dragging');
+            document.querySelectorAll('.kpi').forEach(k => k.classList.remove('drag-over-kpi'));
+          });
+          el.addEventListener('dragover', e => {
+            e.preventDefault();
+            if (el !== dragSrc) {
+              document.querySelectorAll('.kpi').forEach(k => k.classList.remove('drag-over-kpi'));
+              el.classList.add('drag-over-kpi');
+            }
+          });
+          el.addEventListener('drop', e => {
+            e.preventDefault();
+            if (!dragSrc || dragSrc === el) return;
+            const row = document.getElementById('kpi-row');
+            const kids = [...row.children];
+            const fromIdx = kids.indexOf(dragSrc);
+            const toIdx   = kids.indexOf(el);
+            if (fromIdx === -1 || toIdx === -1) return;
+            // Reorder DOM
+            if (fromIdx < toIdx) row.insertBefore(dragSrc, el.nextSibling);
+            else row.insertBefore(dragSrc, el);
+            // Persist
+            const newOrder = [...row.children].map(k => k.dataset.kpi);
+            saveKpiOrder(newOrder);
+            document.querySelectorAll('.kpi').forEach(k => k.classList.remove('drag-over-kpi'));
+          });
+        });
+      }
+
+      // Load saved KPI order on first call to buildPL
+      (function patchBuildPL() {
+        APP.kpiOrder = loadKpiOrder();
+      })();
+
+      // ══════════════════════════════════════════════════════════════
+      // COA SECTION REORDER (up / down buttons)
+      // ══════════════════════════════════════════════════════════════
+      function movePlDefItem(id, dir) {
+        // Work only on the non-computed subset (what the user sees in CoA tree)
+        const visible = APP.plDef.filter(i => i.type !== 'computed');
+        const visIdx = visible.findIndex(i => i.id === id);
+        if (visIdx === -1) return;
+        const targetVisIdx = visIdx + dir;
+        if (targetVisIdx < 0 || targetVisIdx >= visible.length) return;
+
+        const targetId = visible[targetVisIdx].id;
+        const fromIdx  = APP.plDef.findIndex(i => i.id === id);
+        const toIdx    = APP.plDef.findIndex(i => i.id === targetId);
+        if (fromIdx === -1 || toIdx === -1) return;
+        [APP.plDef[fromIdx], APP.plDef[toIdx]] = [APP.plDef[toIdx], APP.plDef[fromIdx]];
+        saveCoA();
+      }
+    </script>
+  </body>
+</html>
