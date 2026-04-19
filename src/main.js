@@ -1,9 +1,6 @@
 import './styles/main.css';
-import { loadAppState } from './lib/storage.js';
-import { loadKpiOrder } from './lib/storage.js';
+import { loadAppState, loadKpiOrder } from './lib/storage.js';
 import { APP, resetAPP } from './state.js';
-import { deepClone } from './lib/utils.js';
-import { DEFAULT_PL_DEF } from './data/default-pl.js';
 import { setScreen, setMainView, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
 import { buildPL, toggleSection, toggleSub, setViewMode } from './ui/pl-table.js';
 import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
@@ -18,38 +15,33 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection,
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
-import { handleFile, removeFile, updateSidebarBadge } from './lib/file-handler.js';
+import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
+import { loadTransactionsFromDB, clearDB } from './lib/db.js';
+import { rebuildAcctMap } from './lib/resolve.js';
 
 // Expose all functions globally (called from inline onclick= in HTML)
 Object.assign(window, {
-  // screen
   setMainView, showToast, setLoading, updateAboveTableHeight,
-  // pl-table
   buildPL, toggleSection, toggleSub, setViewMode,
-  // drill
   openDrill, renderDrillTable, closeDrill,
-  // settings
   toggleSettings, switchSettingsTab, renderCoATree,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
   closeNewSectionModal, confirmNewSection, updateRatioFormula,
   restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem,
-  // rules
   initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection,
   renderRulesList, toggleRule, deleteRule,
-  // file-handler
   handleFile, removeFile, updateSidebarBadge,
-  // files / sidebar
   toggleSidebar, renderFilesScreen,
-  // reset
   resetAll,
 });
 
 function resetAll() {
+  clearDB().catch(() => {});
   resetAPP();
   document.getElementById('file-input').value = '';
   const ei = document.getElementById('file-input-extra');
@@ -76,10 +68,12 @@ function handleFileInput(input) {
 }
 window.handleFileInput = handleFileInput;
 
-function initApp() {
+async function initApp() {
+  // Load CoA, rules, KPI order from localStorage
   loadAppState();
   APP.kpiOrder = loadKpiOrder();
 
+  // Wire up event listeners
   const dropZone = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
   dropZone.addEventListener('click', () => fileInput.click());
@@ -97,14 +91,35 @@ function initApp() {
     else if (document.getElementById('settings-panel').classList.contains('open')) toggleSettings(false);
   });
 
-  // New section modal backdrop
   document.getElementById('new-section-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('new-section-modal')) closeNewSectionModal();
   });
 
   initOutsidePickerClose();
-
   window.addEventListener('resize', updateAboveTableHeight);
+
+  // Try to restore persisted data from IndexedDB
+  try {
+    const { transactions, loadedFiles, accountNames } = await loadTransactionsFromDB();
+    if (transactions && transactions.length > 0 && loadedFiles && loadedFiles.length > 0) {
+      APP.allTransactions = transactions;
+      APP.loadedFiles = loadedFiles;
+      APP.accountNames = accountNames;
+      rebuildAcctMap();
+      updateSidebarBadge();
+      refreshYears();
+      updateTopCompany();
+      buildPL();
+      setScreen('pl-screen');
+      requestAnimationFrame(updateAboveTableHeight);
+      return; // skip upload screen
+    }
+  } catch (e) {
+    console.warn('Could not restore from IndexedDB:', e);
+  }
+
+  // No persisted data — show upload screen
+  setScreen('upload-screen');
 }
 
 initApp();

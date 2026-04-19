@@ -1,9 +1,9 @@
 import { APP, resetAPP } from '../state.js';
-import { esc } from './utils.js';
 import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './parser.js';
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
+import { saveTransactionsToDB, clearDB } from './db.js';
 
 export function mergeTransactions(newTxns, fileId) {
   for (const t of newTxns) {
@@ -44,13 +44,20 @@ export function updateTopCompany() {
     APP.allTransactions.length.toLocaleString('de-DE') + ' Buchungszeilen';
 }
 
+function persistToDB() {
+  saveTransactionsToDB(APP.allTransactions, APP.loadedFiles, APP.accountNames)
+    .catch(e => console.warn('IndexedDB save failed:', e));
+}
+
 export function removeFile(fileId) {
   APP.allTransactions = APP.allTransactions.filter(t => t._fileId !== fileId);
   APP.loadedFiles = APP.loadedFiles.filter(f => f.id !== fileId);
   updateSidebarBadge();
   if (APP.loadedFiles.length === 0) {
+    clearDB().catch(() => {});
     window.resetAll();
   } else {
+    persistToDB();
     refreshYears();
     updateTopCompany();
     buildPL();
@@ -101,7 +108,7 @@ export async function handleFile(file) {
     const newTxns = parseBSP(tryDecode(await bspe.async('uint8array')), bspInfo);
 
     const fileId = 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2);
-    const { added, dupes } = mergeTransactions(newTxns, fileId);
+    const { added } = mergeTransactions(newTxns, fileId);
 
     const fileYears = [...new Set(newTxns.map(t => t.wjYear).filter(Boolean))].sort();
 
@@ -111,9 +118,11 @@ export async function handleFile(file) {
       companyName: APP.companyName || '',
       uploadedAt: new Date().toISOString(),
       txnCount: added,
-      dupeCount: dupes,
       years: fileYears,
     });
+
+    // Persist to IndexedDB so data survives page refresh
+    persistToDB();
 
     updateSidebarBadge();
     refreshYears();
