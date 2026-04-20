@@ -9,6 +9,7 @@ export function showToast(msg) {
 }
 
 export function setScreen(name) {
+  document.getElementById('login-screen').style.display = 'none';
   const fullScreens = ['upload-screen', 'loading-screen'];
   const shell = document.getElementById('app-shell');
   if (fullScreens.includes(name)) {
