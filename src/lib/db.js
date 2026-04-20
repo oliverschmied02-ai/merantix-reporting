@@ -82,6 +82,16 @@ export async function createUser(email, name, password) {
   return data;
 }
 
+export async function resetUserPassword(id, password) {
+  const res = await fetch(`/api/users/${id}/password`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+}
+
 export async function deleteUser(id) {
   const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error((await res.json()).error);

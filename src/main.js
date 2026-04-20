@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser } from './lib/db.js';
+import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword } from './lib/db.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
 // ── Expose globals ────────────────────────────────────────────────────
@@ -38,6 +38,8 @@ Object.assign(window, {
   handleFile, removeFile, updateSidebarBadge,
   toggleSidebar, renderFilesScreen,
   resetAll, doLogin, doLogout, addUser,
+  toggleLoginPw, toggleNewUserPw,
+  removeUser, startResetPw, confirmResetPw, cancelResetPw,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────
@@ -59,6 +61,18 @@ async function doLogin() {
   }
 }
 window.doLogin = doLogin;
+
+function toggleLoginPw() {
+  const inp = document.getElementById('login-password');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+window.toggleLoginPw = toggleLoginPw;
+
+function toggleNewUserPw() {
+  const inp = document.getElementById('new-user-pw');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+window.toggleNewUserPw = toggleNewUserPw;
 
 // Enter key on login form
 document.addEventListener('keydown', e => {
@@ -100,6 +114,8 @@ async function addUser() {
 }
 window.addUser = addUser;
 
+let _resetTargetId = null;
+
 async function renderUsersList() {
   const container = document.getElementById('users-list');
   if (!container) return;
@@ -108,15 +124,45 @@ async function renderUsersList() {
     container.innerHTML = `
       <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Aktive Benutzer (${users.length})</div>
       ${users.map(u => `
-        <div style="display:flex;align-items:center;gap:.75rem;padding:.5rem .6rem;background:#f8f9fd;border-radius:8px;margin-bottom:.35rem">
+        <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:#f8f9fd;border-radius:8px;margin-bottom:.35rem">
           <div style="flex:1">
             <div style="font-size:.8rem;font-weight:600;color:#1e2433">${u.name}</div>
             <div style="font-size:.7rem;color:#8b95a9">${u.email}</div>
           </div>
+          <button onclick="startResetPw(${u.id},'${u.name}')" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
           <button onclick="removeUser(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">✕</button>
         </div>`).join('')}`;
   } catch {}
 }
+
+function startResetPw(id, name) {
+  _resetTargetId = id;
+  document.getElementById('reset-pw-name').textContent = name;
+  document.getElementById('reset-pw-val').value = '';
+  document.getElementById('reset-pw-error').textContent = '';
+  document.getElementById('reset-pw-box').style.display = 'block';
+}
+window.startResetPw = startResetPw;
+
+function cancelResetPw() {
+  _resetTargetId = null;
+  document.getElementById('reset-pw-box').style.display = 'none';
+}
+window.cancelResetPw = cancelResetPw;
+
+async function confirmResetPw() {
+  const pw = document.getElementById('reset-pw-val').value;
+  const errEl = document.getElementById('reset-pw-error');
+  errEl.textContent = '';
+  try {
+    await resetUserPassword(_resetTargetId, pw);
+    cancelResetPw();
+    showToast('Passwort aktualisiert');
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+}
+window.confirmResetPw = confirmResetPw;
 
 async function removeUser(id) {
   if (!confirm('Benutzer löschen?')) return;

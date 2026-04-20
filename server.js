@@ -133,6 +133,18 @@ app.post('/api/users', requireAuth, async (req, res) => {
   }
 });
 
+app.patch('/api/users/:id/password', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 4) return res.status(400).json({ error: 'Passwort zu kurz' });
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.delete('/api/users/:id', requireAuth, async (req, res) => {
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
   await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);

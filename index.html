@@ -66,7 +66,10 @@
         <label class="login-label">E-Mail</label>
         <input class="login-input" id="login-email" type="email" placeholder="name@merantix.com" autocomplete="email" />
         <label class="login-label">Passwort</label>
-        <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+        <div style="position:relative">
+          <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.5rem" />
+          <button type="button" onclick="toggleLoginPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0" id="pw-eye">👁</button>
+        </div>
         <button class="login-btn" id="login-btn" onclick="doLogin()">Anmelden</button>
       </div>
     </div>
@@ -295,11 +298,26 @@
         <!-- Users Tab -->
         <div id="users-tab" class="settings-tab-content hidden">
           <div id="users-list" style="margin-bottom:1.5rem"></div>
+
+          <!-- Reset password modal (inline) -->
+          <div id="reset-pw-box" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;border-radius:10px;padding:1rem;margin-bottom:1rem">
+            <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Passwort zurücksetzen für <span id="reset-pw-name"></span></div>
+            <input class="login-input" id="reset-pw-val" type="password" placeholder="Neues Passwort" style="margin-bottom:.5rem" />
+            <div style="display:flex;gap:.5rem;margin-top:.4rem">
+              <button onclick="confirmResetPw()" style="padding:.4rem .9rem;background:#4f6ef7;color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Speichern</button>
+              <button onclick="cancelResetPw()" style="padding:.4rem .9rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:7px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+            </div>
+            <div id="reset-pw-error" style="color:#dc2626;font-size:.73rem;margin-top:.4rem"></div>
+          </div>
+
           <div style="border-top:1px solid #e4e9f5;padding-top:1rem">
             <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.8rem">Neuen Benutzer hinzufügen</div>
             <input class="login-input" id="new-user-name" placeholder="Name" style="margin-bottom:.5rem" />
             <input class="login-input" id="new-user-email" type="email" placeholder="E-Mail" style="margin-bottom:.5rem" />
-            <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="margin-bottom:.75rem" />
+            <div style="position:relative;margin-bottom:.75rem">
+              <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="padding-right:2.5rem" />
+              <button type="button" onclick="toggleNewUserPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
+            </div>
             <button onclick="addUser()" style="padding:.45rem 1rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">Benutzer erstellen</button>
             <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
           </div>
