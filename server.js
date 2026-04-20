@@ -72,13 +72,18 @@ async function initDB() {
     );
   `);
 
+  // Add role column if it doesn't exist yet (migration)
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'viewer'`);
+  // Ensure the first user (env-bootstrapped admin) keeps admin role
+  await pool.query(`UPDATE users SET role='admin' WHERE id=(SELECT MIN(id) FROM users) AND role IS NULL`);
+
   // Create initial admin from env vars if no users exist yet
   const { rows } = await pool.query('SELECT COUNT(*) FROM users');
   if (parseInt(rows[0].count) === 0 && process.env.ADMIN_EMAIL && process.env.ADMIN_PASSWORD) {
     const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD, 10);
     await pool.query(
-      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3)',
-      [process.env.ADMIN_EMAIL, process.env.ADMIN_NAME || 'Admin', hash]
+      'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4)',
+      [process.env.ADMIN_EMAIL, process.env.ADMIN_NAME || 'Admin', hash, 'admin']
     );
     console.log(`✓ Created admin: ${process.env.ADMIN_EMAIL}`);
   }
@@ -96,6 +101,11 @@ function requireAuth(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  if (req.user?.role !== 'admin') return res.status(403).json({ error: 'Keine Berechtigung' });
+  next();
+}
+
 // ── AUTH ROUTES ───────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
@@ -106,11 +116,11 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: 'Email oder Passwort falsch' });
     }
     const token = jwt.sign(
-      { id: user.id, email: user.email, name: user.name },
+      { id: user.id, email: user.email, name: user.name, role: user.role },
       JWT_SECRET,
       { expiresIn: '30d' }
     );
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
+    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -141,12 +151,12 @@ app.post('/api/auth/request-access', async (req, res) => {
   }
 });
 
-app.get('/api/users/requests', requireAuth, async (req, res) => {
+app.get('/api/users/requests', requireAuth, requireAdmin, async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM access_requests ORDER BY created_at DESC');
   res.json(rows);
 });
 
-app.post('/api/users/requests/:id/approve', requireAuth, async (req, res) => {
+app.post('/api/users/requests/:id/approve', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query('SELECT * FROM access_requests WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
@@ -156,8 +166,8 @@ app.post('/api/users/requests/:id/approve', requireAuth, async (req, res) => {
     const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
     const hash = await bcrypt.hash(tempPassword, 10);
     const ins = await pool.query(
-      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name',
-      [req_.email, req_.name, hash]
+      'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name',
+      [req_.email, req_.name, hash, 'viewer']
     );
     await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
     res.json({ user: ins.rows[0], tempPassword });
@@ -166,25 +176,25 @@ app.post('/api/users/requests/:id/approve', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/users/requests/:id', requireAuth, async (req, res) => {
+app.delete('/api/users/requests/:id', requireAuth, requireAdmin, async (req, res) => {
   await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
   res.json({ ok: true });
 });
 
 // ── USER MANAGEMENT ───────────────────────────────────────────────────
-app.get('/api/users', requireAuth, async (req, res) => {
-  const { rows } = await pool.query('SELECT id, email, name, created_at FROM users ORDER BY id');
+app.get('/api/users', requireAuth, requireAdmin, async (req, res) => {
+  const { rows } = await pool.query('SELECT id, email, name, role, created_at FROM users ORDER BY id');
   res.json(rows);
 });
 
-app.post('/api/users', requireAuth, async (req, res) => {
+app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { email, name, password } = req.body;
+    const { email, name, password, role } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'email, name, password required' });
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
-      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name',
-      [email.toLowerCase(), name, hash]
+      'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
+      [email.toLowerCase(), name, hash, role === 'admin' ? 'admin' : 'viewer']
     );
     res.json(rows[0]);
   } catch (e) {
@@ -192,7 +202,21 @@ app.post('/api/users', requireAuth, async (req, res) => {
   }
 });
 
-app.patch('/api/users/:id/password', requireAuth, async (req, res) => {
+// Own password change — any authenticated user
+app.patch('/api/auth/me/password', requireAuth, async (req, res) => {
+  try {
+    const { password } = req.body;
+    if (!password || password.length < 6) return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
+    const hash = await bcrypt.hash(password, 10);
+    await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.user.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Admin: reset any user's password
+app.patch('/api/users/:id/password', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password || password.length < 4) return res.status(400).json({ error: 'Passwort zu kurz' });
@@ -204,7 +228,20 @@ app.patch('/api/users/:id/password', requireAuth, async (req, res) => {
   }
 });
 
-app.delete('/api/users/:id', requireAuth, async (req, res) => {
+// Admin: update user role
+app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+    if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot change your own role' });
+    await pool.query('UPDATE users SET role=$1 WHERE id=$2', [role, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
   await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
   res.json({ ok: true });

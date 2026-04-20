@@ -82,6 +82,26 @@ export async function createUser(email, name, password) {
   return data;
 }
 
+export async function changeMyPassword(password) {
+  const res = await fetch('/api/auth/me/password', {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ password }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+}
+
+export async function updateUserRole(id, role) {
+  const res = await fetch(`/api/users/${id}/role`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify({ role }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+}
+
 export async function resetUserPassword(id, password) {
   const res = await fetch(`/api/users/${id}/password`, {
     method: 'PATCH',

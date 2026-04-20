@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, requestAccess, getAccessRequests, approveRequest, rejectRequest } from './lib/db.js';
+import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest } from './lib/db.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
 // ── Expose globals ────────────────────────────────────────────────────
@@ -42,6 +42,8 @@ Object.assign(window, {
   removeUser, startResetPw, confirmResetPw, cancelResetPw,
   openRequestAccess, closeRequestAccess, submitAccessRequest,
   approveAccessRequest, rejectAccessRequest,
+  openChangePassword, closeChangePassword, submitChangePassword,
+  setUserRole,
   renderDataStats,
 });
 
@@ -124,17 +126,29 @@ async function renderUsersList() {
   if (!container) return;
   try {
     const users = await getUsers();
+    const myId  = APP.currentUserId;
     container.innerHTML = `
-      <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Aktive Benutzer (${users.length})</div>
-      ${users.map(u => `
-        <div style="display:flex;align-items:center;gap:.5rem;padding:.5rem .6rem;background:#f8f9fd;border-radius:8px;margin-bottom:.35rem">
-          <div style="flex:1">
-            <div style="font-size:.8rem;font-weight:600;color:#1e2433">${u.name}</div>
-            <div style="font-size:.7rem;color:#8b95a9">${u.email}</div>
+      <div style="font-size:.82rem;font-weight:700;color:#1e2433;margin-bottom:.75rem">Aktive Benutzer (${users.length})</div>
+      ${users.map(u => {
+        const isMe   = u.id === myId;
+        const isAdmin = u.role === 'admin';
+        return `
+        <div style="display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;background:#f8f9fd;border:1px solid #e4e9f5;border-radius:10px;margin-bottom:.4rem">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.82rem;font-weight:600;color:#1e2433">${u.name}${isMe ? ' <span style="color:#a0aabb;font-weight:400;font-size:.7rem">(du)</span>' : ''}</div>
+            <div style="font-size:.72rem;color:#8b95a9">${u.email}</div>
           </div>
+          <span style="padding:.15rem .55rem;border-radius:20px;font-size:.68rem;font-weight:700;background:${isAdmin ? '#eef1ff' : '#f0fdf4'};color:${isAdmin ? '#4f6ef7' : '#16a34a'}">${isAdmin ? 'Admin' : 'Viewer'}</span>
+          ${!isMe ? `
+          <select onchange="setUserRole(${u.id},this.value)" style="padding:.25rem .45rem;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;font-family:inherit;background:#fff;color:#1e2433;cursor:pointer">
+            <option value="viewer" ${!isAdmin ? 'selected' : ''}>Viewer</option>
+            <option value="admin" ${isAdmin ? 'selected' : ''}>Admin</option>
+          </select>
           <button onclick="startResetPw(${u.id},'${u.name}')" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
           <button onclick="removeUser(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">✕</button>
-        </div>`).join('')}`;
+          ` : ''}
+        </div>`;
+      }).join('')}`;
   } catch {}
 }
 
@@ -312,6 +326,73 @@ function handleFileInput(input) {
 }
 window.handleFileInput = handleFileInput;
 
+// ── Role-based UI ─────────────────────────────────────────────────────
+function applyRole(user) {
+  const isAdmin = user.role === 'admin';
+  // Nav items
+  const navFiles = document.getElementById('nav-files');
+  if (navFiles) navFiles.classList.toggle('hidden', !isAdmin);
+  // Settings gear in top bar
+  document.querySelectorAll('.btn-settings').forEach(b => b.classList.toggle('hidden', !isAdmin));
+  // Settings item in sidebar footer (first button in sb-footer)
+  const sbSettings = document.querySelector('.sb-footer .sb-nav-item[onclick="toggleSettings()"]');
+  if (sbSettings) sbSettings.classList.toggle('hidden', !isAdmin);
+  // Change-password button (shown for all)
+  const cpBtn = document.getElementById('sb-change-pw');
+  if (cpBtn) cpBtn.classList.remove('hidden');
+  // Store role for later checks
+  APP.currentUserRole = user.role;
+  APP.currentUserId   = user.id;
+}
+
+// ── Change own password ───────────────────────────────────────────────
+function openChangePassword() {
+  document.getElementById('change-pw-modal').style.display = 'flex';
+  document.getElementById('cp-old').value = '';
+  document.getElementById('cp-new').value = '';
+  document.getElementById('cp-confirm').value = '';
+  document.getElementById('cp-error').textContent = '';
+  document.getElementById('cp-error').classList.add('hidden');
+}
+window.openChangePassword = openChangePassword;
+
+function closeChangePassword() {
+  document.getElementById('change-pw-modal').style.display = 'none';
+}
+window.closeChangePassword = closeChangePassword;
+
+async function submitChangePassword() {
+  const newPw  = document.getElementById('cp-new').value;
+  const conf   = document.getElementById('cp-confirm').value;
+  const errEl  = document.getElementById('cp-error');
+  const btn    = document.getElementById('cp-btn');
+  errEl.classList.add('hidden');
+  if (newPw !== conf) { errEl.textContent = 'Passwörter stimmen nicht überein.'; errEl.classList.remove('hidden'); return; }
+  if (newPw.length < 6) { errEl.textContent = 'Passwort muss mindestens 6 Zeichen haben.'; errEl.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    await changeMyPassword(newPw);
+    closeChangePassword();
+    showToast('Passwort geändert');
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Speichern';
+  }
+}
+window.submitChangePassword = submitChangePassword;
+
+// ── Role switching (admin) ────────────────────────────────────────────
+async function setUserRole(id, role) {
+  try {
+    await updateUserRole(id, role);
+    renderUsersList();
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+  }
+}
+window.setUserRole = setUserRole;
+
 // ── Load app data and navigate to P&L ────────────────────────────────
 async function loadAndShowApp(user) {
   loadAppState();
@@ -320,6 +401,8 @@ async function loadAndShowApp(user) {
   // Update sidebar with user name
   const logo = document.querySelector('.sb-logo-text');
   if (logo) logo.textContent = user.name;
+
+  applyRole(user);
 
   try {
     const saved = await loadFromServer();

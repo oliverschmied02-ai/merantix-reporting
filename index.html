@@ -78,6 +78,23 @@
       </div>
     </div>
 
+    <!-- ═══ CHANGE PASSWORD MODAL ═══ -->
+    <div id="change-pw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:400;align-items:center;justify-content:center">
+      <div class="login-card" style="max-width:380px;margin:0 auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="login-title" style="margin:0">Passwort ändern</div>
+          <button onclick="closeChangePassword()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+        </div>
+        <div class="login-error hidden" id="cp-error"></div>
+        <label class="login-label">Neues Passwort</label>
+        <input class="login-input" id="cp-new" type="password" placeholder="••••••••" style="margin-bottom:.5rem" />
+        <label class="login-label">Bestätigen</label>
+        <input class="login-input" id="cp-confirm" type="password" placeholder="••••••••" style="margin-bottom:.75rem" />
+        <input id="cp-old" type="hidden" />
+        <button id="cp-btn" onclick="submitChangePassword()" class="login-btn">Speichern</button>
+      </div>
+    </div>
+
     <!-- ═══ ACCESS REQUEST MODAL ═══ -->
     <div id="access-request-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:none;align-items:center;justify-content:center">
       <div class="login-card" style="max-width:420px;margin:0 auto">
@@ -153,6 +170,10 @@
           <button class="sb-nav-item" onclick="toggleSettings()">
             <span class="sb-nav-icon">⚙️</span>
             <span class="sb-nav-label">Einstellungen</span>
+          </button>
+          <button class="sb-nav-item hidden" id="sb-change-pw" onclick="openChangePassword()">
+            <span class="sb-nav-icon">🔑</span>
+            <span class="sb-nav-label">Passwort ändern</span>
           </button>
           <button class="sb-nav-item" onclick="doLogout()" style="color:#dc2626">
             <span class="sb-nav-icon">→</span>
@@ -316,6 +337,9 @@
                 </div>
                 <button onclick="addUser()" class="sm-action-btn">Benutzer erstellen</button>
                 <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
+              </div>
+              <div style="border-top:1px solid #e4e9f5;padding-top:1rem;margin-top:1rem">
+                <button onclick="openChangePassword()" style="padding:.45rem 1rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">🔑 Eigenes Passwort ändern</button>
               </div>
             </div>
 
