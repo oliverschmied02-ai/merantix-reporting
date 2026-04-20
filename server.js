@@ -244,7 +244,7 @@ app.delete('/api/data', requireAuth, async (req, res) => {
 });
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────
-app.get('*', (req, res) => {
+app.get('/{*path}', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
