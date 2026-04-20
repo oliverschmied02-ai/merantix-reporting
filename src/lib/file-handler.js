@@ -3,14 +3,14 @@ import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './pars
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
-import { saveToServer, clearFromServer } from './db.js';
+import { saveFileToServer, deleteFileFromServer, clearFromServer } from './db.js';
 
 export function mergeTransactions(newTxns, fileId) {
   for (const t of newTxns) {
     t._fileId = fileId;
     APP.allTransactions.push(t);
   }
-  return { added: newTxns.length, dupes: 0 };
+  return { added: newTxns.length };
 }
 
 export function refreshYears() {
@@ -44,20 +44,14 @@ export function updateTopCompany() {
     APP.allTransactions.length.toLocaleString('de-DE') + ' Buchungszeilen';
 }
 
-function persistToServer() {
-  saveToServer(APP.allTransactions, APP.loadedFiles, APP.accountNames)
-    .catch(e => console.warn('Server save failed:', e));
-}
-
 export function removeFile(fileId) {
   APP.allTransactions = APP.allTransactions.filter(t => t._fileId !== fileId);
   APP.loadedFiles = APP.loadedFiles.filter(f => f.id !== fileId);
+  deleteFileFromServer(fileId).catch(e => console.warn('Delete failed:', e));
   updateSidebarBadge();
   if (APP.loadedFiles.length === 0) {
-    clearFromServer().catch(() => {});
     window.resetAll();
   } else {
-    persistToServer();
     refreshYears();
     updateTopCompany();
     buildPL();
@@ -107,31 +101,30 @@ export async function handleFile(file) {
     await new Promise(r => setTimeout(r, 20));
     const newTxns = parseBSP(tryDecode(await bspe.async('uint8array')), bspInfo);
 
-    const fileId = 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const fileId   = 'file_' + Date.now() + '_' + Math.random().toString(36).slice(2);
     const { added } = mergeTransactions(newTxns, fileId);
-
     const fileYears = [...new Set(newTxns.map(t => t.wjYear).filter(Boolean))].sort();
 
-    APP.loadedFiles.push({
-      id: fileId,
-      name: file.name,
+    const fileRecord = {
+      id:          fileId,
+      name:        file.name,
       companyName: APP.companyName || '',
-      uploadedAt: new Date().toISOString(),
-      txnCount: added,
-      years: fileYears,
-    });
+      uploadedAt:  new Date().toISOString(),
+      txnCount:    added,
+      years:       fileYears,
+    };
+    APP.loadedFiles.push(fileRecord);
 
-    // Persist to server so data survives refresh and works across devices
-    persistToServer();
+    // Save to PostgreSQL
+    setLoading('Daten werden gespeichert…');
+    await saveFileToServer(fileRecord, newTxns, APP.accountNames);
 
     updateSidebarBadge();
     refreshYears();
     updateTopCompany();
     buildPL();
     setScreen('pl-screen');
-    requestAnimationFrame(() => {
-      import('../ui/screen.js').then(m => m.updateAboveTableHeight());
-    });
+    requestAnimationFrame(() => import('../ui/screen.js').then(m => m.updateAboveTableHeight()));
   } catch (e) {
     console.error(e);
     showToast('Fehler: ' + e.message);

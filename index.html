@@ -56,6 +56,21 @@
     </div>
   </head>
   <body>
+    <!-- ═══ LOGIN ═══ -->
+    <div id="login-screen" style="display:none">
+      <div class="app-logo" style="margin-bottom:.5rem"><span class="app-logo-badge">P&amp;L</span> Analyzer</div>
+      <div class="app-sub">Merantix · GDPdU Reporting</div>
+      <div class="login-card">
+        <div class="login-title">Anmelden</div>
+        <div class="login-error hidden" id="login-error"></div>
+        <label class="login-label">E-Mail</label>
+        <input class="login-input" id="login-email" type="email" placeholder="name@merantix.com" autocomplete="email" />
+        <label class="login-label">Passwort</label>
+        <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" />
+        <button class="login-btn" id="login-btn" onclick="doLogin()">Anmelden</button>
+      </div>
+    </div>
+
     <!-- ═══ UPLOAD ═══ -->
     <div id="upload-screen">
       <div class="app-logo"><span class="app-logo-badge">P&amp;L</span> Analyzer</div>
@@ -214,6 +229,7 @@
       <div class="settings-tabs">
         <button class="settings-tab active" onclick="switchSettingsTab('coa')" data-tab="coa">Kontenplan</button>
         <button class="settings-tab" onclick="switchSettingsTab('rules')" data-tab="rules">Buchungsregeln</button>
+        <button class="settings-tab" onclick="switchSettingsTab('users')" data-tab="users">Benutzer</button>
       </div>
       <div class="settings-content">
         <!-- CoA Tab -->
@@ -273,6 +289,22 @@
           <div style="margin-top:2rem;border-top:1px solid #e4e9f5;padding-top:1rem">
             <div style="font-size:.8rem;color:#1e2433;margin-bottom:1rem;font-weight:600">Bestehende Regeln</div>
             <div class="rules-list" id="rules-list"></div>
+          </div>
+        </div>
+      </div>
+        <!-- Users Tab -->
+        <div id="users-tab" class="settings-tab-content hidden">
+          <div id="users-list" style="margin-bottom:1.5rem"></div>
+          <div style="border-top:1px solid #e4e9f5;padding-top:1rem">
+            <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.8rem">Neuen Benutzer hinzufügen</div>
+            <input class="login-input" id="new-user-name" placeholder="Name" style="margin-bottom:.5rem" />
+            <input class="login-input" id="new-user-email" type="email" placeholder="E-Mail" style="margin-bottom:.5rem" />
+            <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="margin-bottom:.75rem" />
+            <button onclick="addUser()" style="padding:.45rem 1rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">Benutzer erstellen</button>
+            <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
+          </div>
+          <div style="border-top:1px solid #e4e9f5;padding-top:1rem;margin-top:1.5rem">
+            <button onclick="doLogout()" style="padding:.45rem 1rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">Abmelden</button>
           </div>
         </div>
       </div>
