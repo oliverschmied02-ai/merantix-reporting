@@ -92,6 +92,32 @@ export async function resetUserPassword(id, password) {
   if (!res.ok) throw new Error(data.error);
 }
 
+export async function requestAccess(name, email, message) {
+  const res = await fetch('/api/auth/request-access', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, email, message }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+}
+
+export async function getAccessRequests() {
+  const res = await fetch('/api/users/requests', { headers: authHeaders() });
+  return res.json();
+}
+
+export async function approveRequest(id) {
+  const res = await fetch(`/api/users/requests/${id}/approve`, { method: 'POST', headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data; // { user, tempPassword }
+}
+
+export async function rejectRequest(id) {
+  await fetch(`/api/users/requests/${id}`, { method: 'DELETE', headers: authHeaders() });
+}
+
 export async function deleteUser(id) {
   const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: authHeaders() });
   if (!res.ok) throw new Error((await res.json()).error);

@@ -4,7 +4,7 @@ import { APP, resetAPP } from './state.js';
 import { setScreen, setMainView, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
 import { buildPL, toggleSection, toggleSub, setViewMode } from './ui/pl-table.js';
 import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
-import { toggleSettings, switchSettingsTab, renderCoATree,
+import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword } from './lib/db.js';
+import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, requestAccess, getAccessRequests, approveRequest, rejectRequest } from './lib/db.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
 // ── Expose globals ────────────────────────────────────────────────────
@@ -40,6 +40,9 @@ Object.assign(window, {
   resetAll, doLogin, doLogout, addUser,
   toggleLoginPw, toggleNewUserPw,
   removeUser, startResetPw, confirmResetPw, cancelResetPw,
+  openRequestAccess, closeRequestAccess, submitAccessRequest,
+  approveAccessRequest, rejectAccessRequest,
+  renderDataStats,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────
@@ -175,12 +178,110 @@ async function removeUser(id) {
 }
 window.removeUser = removeUser;
 
-// Wire up users tab render when opened
+// Wire up tab render when opened
 const _origSwitchTab = window.switchSettingsTab;
 window.switchSettingsTab = function(tab) {
   _origSwitchTab(tab);
   if (tab === 'users') renderUsersList();
+  if (tab === 'requests') renderRequestsList();
 };
+
+// ── Access requests (public) ──────────────────────────────────────────
+function openRequestAccess() {
+  const m = document.getElementById('access-request-modal');
+  m.style.display = 'flex';
+  document.getElementById('req-error').classList.add('hidden');
+  document.getElementById('req-success').classList.add('hidden');
+  document.getElementById('req-name').value = '';
+  document.getElementById('req-email').value = '';
+  document.getElementById('req-message').value = '';
+}
+window.openRequestAccess = openRequestAccess;
+
+function closeRequestAccess() {
+  document.getElementById('access-request-modal').style.display = 'none';
+}
+window.closeRequestAccess = closeRequestAccess;
+
+async function submitAccessRequest() {
+  const name    = document.getElementById('req-name').value.trim();
+  const email   = document.getElementById('req-email').value.trim();
+  const message = document.getElementById('req-message').value.trim();
+  const errEl   = document.getElementById('req-error');
+  const btn     = document.getElementById('req-btn');
+  errEl.classList.add('hidden');
+  if (!name || !email) { errEl.textContent = 'Name und E-Mail erforderlich.'; errEl.classList.remove('hidden'); return; }
+  btn.disabled = true; btn.textContent = '…';
+  try {
+    await requestAccess(name, email, message);
+    document.getElementById('req-success').classList.remove('hidden');
+    btn.style.display = 'none';
+  } catch (e) {
+    errEl.textContent = e.message; errEl.classList.remove('hidden');
+  } finally {
+    btn.disabled = false; if (btn.style.display !== 'none') btn.textContent = 'Anfrage senden';
+  }
+}
+window.submitAccessRequest = submitAccessRequest;
+
+// ── Access requests (admin) ───────────────────────────────────────────
+async function renderRequestsList() {
+  const container = document.getElementById('requests-list');
+  const badge     = document.getElementById('requests-badge');
+  if (!container) return;
+  try {
+    const reqs = await getAccessRequests();
+    // Update badge
+    if (badge) {
+      badge.textContent = reqs.length;
+      badge.classList.toggle('hidden', reqs.length === 0);
+    }
+    if (!reqs.length) {
+      container.innerHTML = `<div style="text-align:center;padding:3rem 0;color:#a0aabb;font-size:.85rem">Keine offenen Anfragen</div>`;
+      return;
+    }
+    container.innerHTML = reqs.map(r => `
+      <div style="background:#fff;border:1px solid #e4e9f5;border-radius:12px;padding:1rem 1.25rem;margin-bottom:.75rem;display:flex;align-items:flex-start;gap:1rem">
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;color:#1e2433;font-size:.85rem">${r.name}</div>
+          <div style="color:#4f6ef7;font-size:.75rem;margin-top:.1rem">${r.email}</div>
+          ${r.message ? `<div style="color:#8b95a9;font-size:.75rem;margin-top:.4rem;font-style:italic">"${r.message}"</div>` : ''}
+          <div style="color:#a0aabb;font-size:.7rem;margin-top:.4rem">${new Date(r.created_at).toLocaleDateString('de-DE')}</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:.35rem;flex-shrink:0">
+          <button onclick="approveAccessRequest(${r.id},'${r.name}')" style="padding:.3rem .7rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit">✓ Freischalten</button>
+          <button onclick="rejectAccessRequest(${r.id})" style="padding:.3rem .7rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">✕ Ablehnen</button>
+        </div>
+      </div>`).join('');
+  } catch (e) {
+    container.innerHTML = `<div style="color:#dc2626;font-size:.8rem">Fehler: ${e.message}</div>`;
+  }
+}
+
+async function approveAccessRequest(id, name) {
+  try {
+    const { tempPassword } = await approveRequest(id);
+    await renderRequestsList();
+    await renderUsersList();
+    showToast(`${name} freigeschaltet`);
+    // Show temp password in a prompt-style dialog
+    alert(`✓ Konto erstellt!\n\nBenutzer: ${name}\nTemporäres Passwort:\n\n${tempPassword}\n\nBitte teilen Sie dieses Passwort sicher mit dem Benutzer.`);
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+  }
+}
+window.approveAccessRequest = approveAccessRequest;
+
+async function rejectAccessRequest(id) {
+  if (!confirm('Anfrage ablehnen und löschen?')) return;
+  try {
+    await rejectRequest(id);
+    renderRequestsList();
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+  }
+}
+window.rejectAccessRequest = rejectAccessRequest;
 
 // ── Reset ─────────────────────────────────────────────────────────────
 function resetAll() {
@@ -259,10 +360,12 @@ async function initApp() {
   });
   document.getElementById('overlay').addEventListener('click', () => {
     if (document.getElementById('drill-panel').classList.contains('open')) closeDrill();
-    else if (document.getElementById('settings-panel').classList.contains('open')) toggleSettings(false);
   });
   document.getElementById('new-section-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('new-section-modal')) closeNewSectionModal();
+  });
+  document.getElementById('settings-modal').addEventListener('click', e => {
+    if (e.target === document.getElementById('settings-modal')) toggleSettings(false);
   });
   initOutsidePickerClose();
   window.addEventListener('resize', updateAboveTableHeight);

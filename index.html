@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
-    <!-- New Section Modal (in head to be available before body render) -->
+    <!-- New Section Modal -->
     <div id="new-section-modal">
       <div class="modal-box">
         <div class="modal-title">Neue Sektion erstellen</div>
@@ -56,6 +56,7 @@
     </div>
   </head>
   <body>
+
     <!-- ═══ LOGIN ═══ -->
     <div id="login-screen" style="display:none">
       <div class="app-logo" style="margin-bottom:.5rem"><span class="app-logo-badge">P&amp;L</span> Analyzer</div>
@@ -68,9 +69,34 @@
         <label class="login-label">Passwort</label>
         <div style="position:relative">
           <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.5rem" />
-          <button type="button" onclick="toggleLoginPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0" id="pw-eye">👁</button>
+          <button type="button" onclick="toggleLoginPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
         </div>
         <button class="login-btn" id="login-btn" onclick="doLogin()">Anmelden</button>
+        <div style="text-align:center;margin-top:1rem">
+          <button onclick="openRequestAccess()" style="background:none;border:none;color:#4f6ef7;font-size:.78rem;cursor:pointer;font-family:inherit;text-decoration:underline">Zugang anfordern</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ ACCESS REQUEST MODAL ═══ -->
+    <div id="access-request-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:300;display:none;align-items:center;justify-content:center">
+      <div class="login-card" style="max-width:420px;margin:0 auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="login-title" style="margin:0">Zugang anfordern</div>
+          <button onclick="closeRequestAccess()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+        </div>
+        <div style="font-size:.78rem;color:#8b95a9;margin-bottom:1rem">Ihr Administrator wird benachrichtigt und kann Ihren Zugang freischalten.</div>
+        <div class="login-error hidden" id="req-error"></div>
+        <div id="req-success" class="hidden" style="background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:8px;padding:.6rem .8rem;font-size:.78rem;margin-bottom:.75rem">
+          Anfrage gesendet! Ihr Administrator wird sich bei Ihnen melden.
+        </div>
+        <label class="login-label">Name</label>
+        <input class="login-input" id="req-name" type="text" placeholder="Max Mustermann" style="margin-bottom:.5rem" />
+        <label class="login-label">E-Mail</label>
+        <input class="login-input" id="req-email" type="email" placeholder="name@merantix.com" style="margin-bottom:.5rem" />
+        <label class="login-label">Nachricht (optional)</label>
+        <textarea class="login-input" id="req-message" rows="2" placeholder="Kurze Beschreibung…" style="resize:none;margin-bottom:.75rem"></textarea>
+        <button id="req-btn" onclick="submitAccessRequest()" class="login-btn">Anfrage senden</button>
       </div>
     </div>
 
@@ -90,7 +116,7 @@
           <code>Buchungssatzprotokoll.csv</code> und
           <code>Sachkontenstamm.csv</code>. Buchungsmonat wird aus
           <code>Stapelnummer</code> (Format <code>01-2025/xxx</code>) gelesen.
-          Nur GuV-Konten werden berücksichtigt. Alle Daten bleiben lokal.
+          Nur GuV-Konten werden berücksichtigt.
         </p>
       </div>
     </div>
@@ -101,7 +127,7 @@
       <div id="loading-text">Datei wird geladen…</div>
     </div>
 
-    <!-- ═══ APP SHELL (sidebar + main) ═══ -->
+    <!-- ═══ APP SHELL ═══ -->
     <div id="app-shell" style="display:none">
       <!-- Sidebar -->
       <nav id="sidebar">
@@ -128,9 +154,9 @@
             <span class="sb-nav-icon">⚙️</span>
             <span class="sb-nav-label">Einstellungen</span>
           </button>
-          <button class="sb-nav-item" onclick="resetAll()" style="color:#dc2626">
-            <span class="sb-nav-icon">↩</span>
-            <span class="sb-nav-label">Alles zurücksetzen</span>
+          <button class="sb-nav-item" onclick="doLogout()" style="color:#dc2626">
+            <span class="sb-nav-icon">→</span>
+            <span class="sb-nav-label">Abmelden</span>
           </button>
         </div>
       </nav>
@@ -177,7 +203,7 @@
         <div id="files-screen">
           <div class="files-page-header">
             <div class="files-page-title">Geladene Dateien</div>
-            <div class="files-page-sub">Alle Daten bleiben lokal im Browser.</div>
+            <div class="files-page-sub">Buchungsdaten aus GDPdU-Exporten.</div>
           </div>
           <div class="files-list" id="files-list"></div>
           <div class="files-drop-zone" id="drop-zone-extra"
@@ -223,110 +249,161 @@
       </div>
     </div>
 
-    <!-- ═══ SETTINGS PANEL ═══ -->
-    <div id="settings-panel">
-      <div class="settings-header">
-        <div class="settings-title">⚙️ Einstellungen</div>
-        <button class="settings-close" onclick="toggleSettings()">✕</button>
-      </div>
-      <div class="settings-tabs">
-        <button class="settings-tab active" onclick="switchSettingsTab('coa')" data-tab="coa">Kontenplan</button>
-        <button class="settings-tab" onclick="switchSettingsTab('rules')" data-tab="rules">Buchungsregeln</button>
-        <button class="settings-tab" onclick="switchSettingsTab('users')" data-tab="users">Benutzer</button>
-      </div>
-      <div class="settings-content">
-        <!-- CoA Tab -->
-        <div id="coa-tab" class="settings-tab-content">
-          <div class="settings-toolbar">
-            <button class="settings-btn" onclick="restoreDefaultPL()" title="Standard wiederherstellen">🔄 Standard</button>
-            <button class="settings-btn" onclick="exportCoA()" title="Als JSON exportieren">⬇ Export</button>
-            <button class="settings-btn" onclick="importCoADialog()" title="JSON importieren">⬆ Import</button>
+    <!-- ═══ SETTINGS MODAL ═══ -->
+    <div id="settings-modal">
+      <div class="sm-inner">
+        <!-- Left sidebar -->
+        <div class="sm-sidebar">
+          <div class="sm-sidebar-header">
+            <span class="app-logo-badge" style="font-size:.75rem;padding:.15rem .42rem">P&amp;L</span>
+            <span style="font-weight:700;font-size:.88rem;color:#1e2433">Einstellungen</span>
           </div>
-          <div class="coa-tree" id="coa-tree"></div>
-          <button class="coa-add-section" onclick="addNewSection()">+ Neue Sektion</button>
-        </div>
-        <!-- Rules Tab -->
-        <div id="rules-tab" class="settings-tab-content hidden">
-          <div class="rules-section">
-            <div style="margin-bottom: 1rem">
-              <input type="text" class="search-box" id="txn-picker-search"
-                     placeholder="Buchungen durchsuchen (alle Spalten)…"
-                     oninput="updateTransactionPicker()" />
-              <div class="match-count" id="txn-picker-count"
-                   style="margin-top: 0.3rem; font-size: 0.75rem; color: #6b7280"></div>
-            </div>
-            <div style="max-height:300px;overflow-y:auto;border:1px solid #e4e9f5;border-radius:8px;margin-bottom:1rem">
-              <table class="txn-picker-table" style="width:100%;border-collapse:collapse;font-size:.7rem">
-                <thead style="position:sticky;top:0;background:#f4f6fb;border-bottom:1px solid #e4e9f5">
-                  <tr>
-                    <th style="padding:.4rem;text-align:center;width:30px">
-                      <input type="checkbox" id="txn-select-all" onchange="toggleSelectAllTransactions()"/>
-                    </th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Datum</th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Beleg</th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Kto</th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">GKto</th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Text</th>
-                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Soll</th>
-                    <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Haben</th>
-                    <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Zugeordnet</th>
-                  </tr>
-                </thead>
-                <tbody id="txn-picker-tbody" style="background:#fff"></tbody>
-              </table>
-            </div>
-            <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
-              <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">
-                <strong id="txn-selection-count">0 Buchungen</strong> ausgewählt
-              </div>
-              <div style="display:grid;gap:.5rem">
-                <label style="font-size:.75rem;color:#8b95a9;font-weight:600">Ausgewählte Buchungen zuordnen nach:</label>
-                <select id="txn-bulk-target-sub" style="padding:.4rem;background:#fff;color:#1e2433;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;font-family:inherit">
-                  <option value="">-- Kategorie wählen --</option>
-                </select>
-                <button onclick="applyBulkReclassification()" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
-                <button onclick="clearTransactionSelection()" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
-              </div>
-            </div>
-          </div>
-          <div style="margin-top:2rem;border-top:1px solid #e4e9f5;padding-top:1rem">
-            <div style="font-size:.8rem;color:#1e2433;margin-bottom:1rem;font-weight:600">Bestehende Regeln</div>
-            <div class="rules-list" id="rules-list"></div>
+          <nav class="sm-nav">
+            <button class="sm-tab active" data-tab="users" onclick="switchSettingsTab('users')">
+              <span class="sm-tab-icon">👥</span> Benutzer
+            </button>
+            <button class="sm-tab" data-tab="requests" onclick="switchSettingsTab('requests')">
+              <span class="sm-tab-icon">📬</span> Zugriffsanfragen
+              <span class="sm-tab-badge hidden" id="requests-badge">0</span>
+            </button>
+            <button class="sm-tab" data-tab="coa" onclick="switchSettingsTab('coa')">
+              <span class="sm-tab-icon">📋</span> Kontenplan
+            </button>
+            <button class="sm-tab" data-tab="rules" onclick="switchSettingsTab('rules')">
+              <span class="sm-tab-icon">📐</span> Buchungsregeln
+            </button>
+            <button class="sm-tab" data-tab="data" onclick="switchSettingsTab('data')">
+              <span class="sm-tab-icon">🗄</span> Daten
+            </button>
+          </nav>
+          <div class="sm-sidebar-footer">
+            <button onclick="doLogout()" class="sm-logout-btn">Abmelden</button>
           </div>
         </div>
-      </div>
-        <!-- Users Tab -->
-        <div id="users-tab" class="settings-tab-content hidden">
-          <div id="users-list" style="margin-bottom:1.5rem"></div>
 
-          <!-- Reset password modal (inline) -->
-          <div id="reset-pw-box" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;border-radius:10px;padding:1rem;margin-bottom:1rem">
-            <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Passwort zurücksetzen für <span id="reset-pw-name"></span></div>
-            <input class="login-input" id="reset-pw-val" type="password" placeholder="Neues Passwort" style="margin-bottom:.5rem" />
-            <div style="display:flex;gap:.5rem;margin-top:.4rem">
-              <button onclick="confirmResetPw()" style="padding:.4rem .9rem;background:#4f6ef7;color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Speichern</button>
-              <button onclick="cancelResetPw()" style="padding:.4rem .9rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:7px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
-            </div>
-            <div id="reset-pw-error" style="color:#dc2626;font-size:.73rem;margin-top:.4rem"></div>
+        <!-- Right content -->
+        <div class="sm-main">
+          <div class="sm-header">
+            <div class="sm-header-title" id="sm-title">Benutzer</div>
+            <button class="sm-close" onclick="toggleSettings()">✕</button>
           </div>
+          <div class="sm-body">
 
-          <div style="border-top:1px solid #e4e9f5;padding-top:1rem">
-            <div style="font-size:.8rem;font-weight:600;color:#1e2433;margin-bottom:.8rem">Neuen Benutzer hinzufügen</div>
-            <input class="login-input" id="new-user-name" placeholder="Name" style="margin-bottom:.5rem" />
-            <input class="login-input" id="new-user-email" type="email" placeholder="E-Mail" style="margin-bottom:.5rem" />
-            <div style="position:relative;margin-bottom:.75rem">
-              <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="padding-right:2.5rem" />
-              <button type="button" onclick="toggleNewUserPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
+            <!-- ── Users Tab ── -->
+            <div id="sm-users-tab" class="sm-tab-content">
+              <div id="users-list" style="margin-bottom:1.5rem"></div>
+
+              <!-- Reset password inline box -->
+              <div id="reset-pw-box" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;border-radius:10px;padding:1rem;margin-bottom:1rem">
+                <div style="font-size:.82rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Passwort zurücksetzen für <span id="reset-pw-name"></span></div>
+                <input class="login-input" id="reset-pw-val" type="password" placeholder="Neues Passwort" style="margin-bottom:.5rem" />
+                <div style="display:flex;gap:.5rem;margin-top:.4rem">
+                  <button onclick="confirmResetPw()" style="padding:.4rem .9rem;background:#4f6ef7;color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Speichern</button>
+                  <button onclick="cancelResetPw()" style="padding:.4rem .9rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:7px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+                </div>
+                <div id="reset-pw-error" style="color:#dc2626;font-size:.73rem;margin-top:.4rem"></div>
+              </div>
+
+              <div style="border-top:1px solid #e4e9f5;padding-top:1.25rem">
+                <div style="font-size:.82rem;font-weight:700;color:#1e2433;margin-bottom:.8rem">Neuen Benutzer erstellen</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.5rem">
+                  <input class="login-input" id="new-user-name" placeholder="Name" />
+                  <input class="login-input" id="new-user-email" type="email" placeholder="E-Mail" />
+                </div>
+                <div style="position:relative;margin-bottom:.75rem">
+                  <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="padding-right:2.5rem" />
+                  <button type="button" onclick="toggleNewUserPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
+                </div>
+                <button onclick="addUser()" class="sm-action-btn">Benutzer erstellen</button>
+                <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
+              </div>
             </div>
-            <button onclick="addUser()" style="padding:.45rem 1rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">Benutzer erstellen</button>
-            <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
-          </div>
-          <div style="border-top:1px solid #e4e9f5;padding-top:1rem;margin-top:1.5rem">
-            <button onclick="doLogout()" style="padding:.45rem 1rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">Abmelden</button>
-          </div>
-        </div>
-      </div>
-    </div>
+
+            <!-- ── Requests Tab ── -->
+            <div id="sm-requests-tab" class="sm-tab-content hidden">
+              <div id="requests-list"></div>
+            </div>
+
+            <!-- ── CoA Tab ── -->
+            <div id="sm-coa-tab" class="sm-tab-content hidden">
+              <div class="settings-toolbar">
+                <button class="settings-btn" onclick="restoreDefaultPL()" title="Standard wiederherstellen">🔄 Standard</button>
+                <button class="settings-btn" onclick="exportCoA()" title="Als JSON exportieren">⬇ Export</button>
+                <button class="settings-btn" onclick="importCoADialog()" title="JSON importieren">⬆ Import</button>
+              </div>
+              <div class="coa-tree" id="coa-tree"></div>
+              <button class="coa-add-section" onclick="addNewSection()">+ Neue Sektion</button>
+            </div>
+
+            <!-- ── Rules Tab ── -->
+            <div id="sm-rules-tab" class="sm-tab-content hidden">
+              <div class="rules-section">
+                <div style="margin-bottom: 1rem">
+                  <input type="text" class="search-box" id="txn-picker-search"
+                         placeholder="Buchungen durchsuchen (alle Spalten)…"
+                         oninput="updateTransactionPicker()" />
+                  <div class="match-count" id="txn-picker-count"
+                       style="margin-top: 0.3rem; font-size: 0.75rem; color: #6b7280"></div>
+                </div>
+                <div style="max-height:260px;overflow-y:auto;border:1px solid #e4e9f5;border-radius:8px;margin-bottom:1rem">
+                  <table class="txn-picker-table" style="width:100%;border-collapse:collapse;font-size:.7rem">
+                    <thead style="position:sticky;top:0;background:#f4f6fb;border-bottom:1px solid #e4e9f5">
+                      <tr>
+                        <th style="padding:.4rem;text-align:center;width:30px">
+                          <input type="checkbox" id="txn-select-all" onchange="toggleSelectAllTransactions()"/>
+                        </th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Datum</th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Beleg</th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Kto</th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">GKto</th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Text</th>
+                        <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Soll</th>
+                        <th style="padding:.4rem;text-align:right;color:#a0aabb;font-weight:700">Haben</th>
+                        <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Zugeordnet</th>
+                      </tr>
+                    </thead>
+                    <tbody id="txn-picker-tbody" style="background:#fff"></tbody>
+                  </table>
+                </div>
+                <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
+                  <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">
+                    <strong id="txn-selection-count">0 Buchungen</strong> ausgewählt
+                  </div>
+                  <div style="display:grid;gap:.5rem">
+                    <label style="font-size:.75rem;color:#8b95a9;font-weight:600">Ausgewählte Buchungen zuordnen nach:</label>
+                    <select id="txn-bulk-target-sub" style="padding:.4rem;background:#fff;color:#1e2433;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;font-family:inherit">
+                      <option value="">-- Kategorie wählen --</option>
+                    </select>
+                    <button onclick="applyBulkReclassification()" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
+                    <button onclick="clearTransactionSelection()" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+                  </div>
+                </div>
+              </div>
+              <div style="margin-top:2rem;border-top:1px solid #e4e9f5;padding-top:1rem">
+                <div style="font-size:.82rem;color:#1e2433;margin-bottom:1rem;font-weight:700">Bestehende Regeln</div>
+                <div class="rules-list" id="rules-list"></div>
+              </div>
+            </div>
+
+            <!-- ── Data Tab ── -->
+            <div id="sm-data-tab" class="sm-tab-content hidden">
+              <div class="sm-data-stats" id="sm-data-stats"></div>
+              <div class="sm-danger-zone">
+                <div class="sm-danger-title">Gefahrenzone</div>
+                <div class="sm-danger-item">
+                  <div>
+                    <div style="font-weight:600;color:#1e2433;font-size:.82rem">Alle Daten löschen</div>
+                    <div style="color:#8b95a9;font-size:.75rem;margin-top:.2rem">Löscht alle hochgeladenen Buchungsdaten und Dateien unwiderruflich.</div>
+                  </div>
+                  <button onclick="resetAll()" class="sm-danger-btn">Alle Daten löschen</button>
+                </div>
+              </div>
+            </div>
+
+          </div><!-- /sm-body -->
+        </div><!-- /sm-main -->
+      </div><!-- /sm-inner -->
+    </div><!-- /settings-modal -->
 
     <div id="toast"></div>
 

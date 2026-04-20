@@ -62,6 +62,14 @@ async function initDB() {
       ktonr INTEGER PRIMARY KEY,
       name  TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS access_requests (
+      id         SERIAL PRIMARY KEY,
+      name       TEXT NOT NULL,
+      email      TEXT NOT NULL,
+      message    TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
   `);
 
   // Create initial admin from env vars if no users exist yet
@@ -110,6 +118,57 @@ app.post('/api/auth/login', async (req, res) => {
 
 app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ user: req.user });
+});
+
+// ── ACCESS REQUESTS ───────────────────────────────────────────────────
+app.post('/api/auth/request-access', async (req, res) => {
+  try {
+    const { name, email, message } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'Name und E-Mail erforderlich' });
+    // Check if email already exists as user
+    const existing = await pool.query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
+    if (existing.rows.length) return res.status(400).json({ error: 'E-Mail bereits registriert' });
+    // Check if request already pending
+    const pending = await pool.query('SELECT id FROM access_requests WHERE email=$1', [email.toLowerCase()]);
+    if (pending.rows.length) return res.status(400).json({ error: 'Anfrage bereits gestellt' });
+    await pool.query(
+      'INSERT INTO access_requests (name, email, message) VALUES ($1, $2, $3)',
+      [name, email.toLowerCase(), message || null]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+app.get('/api/users/requests', requireAuth, async (req, res) => {
+  const { rows } = await pool.query('SELECT * FROM access_requests ORDER BY created_at DESC');
+  res.json(rows);
+});
+
+app.post('/api/users/requests/:id/approve', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM access_requests WHERE id=$1', [req.params.id]);
+    if (!rows.length) return res.status(404).json({ error: 'Anfrage nicht gefunden' });
+    const req_ = rows[0];
+    // Generate temp password
+    const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    const tempPassword = Array.from({ length: 12 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+    const hash = await bcrypt.hash(tempPassword, 10);
+    const ins = await pool.query(
+      'INSERT INTO users (email, name, password_hash) VALUES ($1, $2, $3) RETURNING id, email, name',
+      [req_.email, req_.name, hash]
+    );
+    await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
+    res.json({ user: ins.rows[0], tempPassword });
+  } catch (e) {
+    res.status(400).json({ error: e.message.includes('unique') ? 'E-Mail bereits registriert' : e.message });
+  }
+});
+
+app.delete('/api/users/requests/:id', requireAuth, async (req, res) => {
+  await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
+  res.json({ ok: true });
 });
 
 // ── USER MANAGEMENT ───────────────────────────────────────────────────

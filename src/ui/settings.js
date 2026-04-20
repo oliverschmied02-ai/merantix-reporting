@@ -8,24 +8,33 @@ import { showToast } from './screen.js';
 import { initTransactionPicker } from './rules.js';
 import { renderRulesList } from './rules.js';
 
+const SM_TAB_TITLES = {
+  users:    'Benutzer',
+  requests: 'Zugriffsanfragen',
+  coa:      'Kontenplan',
+  rules:    'Buchungsregeln',
+  data:     'Daten & Verwaltung',
+};
+
 export function toggleSettings(show) {
-  const panel = document.getElementById('settings-panel');
-  const overlay = document.getElementById('overlay');
-  if (show === undefined) show = !panel.classList.contains('open');
-  panel.classList.toggle('open', show);
+  const modal = document.getElementById('settings-modal');
+  if (show === undefined) show = !modal.classList.contains('open');
+  modal.classList.toggle('open', show);
   if (show) {
-    overlay.classList.add('open');
-    renderCoATree();
-    renderRulesList();
-  } else {
-    overlay.classList.remove('open');
+    switchSettingsTab('users');
   }
 }
 
 export function switchSettingsTab(tab) {
-  document.querySelectorAll('.settings-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-  document.querySelectorAll('.settings-tab-content').forEach(c => c.classList.toggle('hidden', !c.id.startsWith(tab)));
+  document.querySelectorAll('.sm-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.sm-tab-content').forEach(c => c.classList.add('hidden'));
+  const content = document.getElementById(`sm-${tab}-tab`);
+  if (content) content.classList.remove('hidden');
+  const title = document.getElementById('sm-title');
+  if (title) title.textContent = SM_TAB_TITLES[tab] || tab;
   if (tab === 'rules') initTransactionPicker();
+  if (tab === 'coa') renderCoATree();
+  if (tab === 'data') renderDataStats();
 }
 
 // Track open account picker
@@ -405,6 +414,39 @@ export function importCoADialog() {
     reader.readAsText(file);
   };
   input.click();
+}
+
+export function renderDataStats() {
+  const el = document.getElementById('sm-data-stats');
+  if (!el) return;
+  const years = [...new Set(APP.allTransactions.map(t => t.wjYear).filter(Boolean))].sort();
+  el.innerHTML = `
+    <div class="sm-stat-grid">
+      <div class="sm-stat-card">
+        <div class="sm-stat-val">${APP.loadedFiles.length}</div>
+        <div class="sm-stat-label">Dateien geladen</div>
+      </div>
+      <div class="sm-stat-card">
+        <div class="sm-stat-val">${APP.allTransactions.length.toLocaleString('de-DE')}</div>
+        <div class="sm-stat-label">Buchungszeilen</div>
+      </div>
+      <div class="sm-stat-card">
+        <div class="sm-stat-val">${years.join(', ') || '—'}</div>
+        <div class="sm-stat-label">Geschäftsjahre</div>
+      </div>
+    </div>
+    ${APP.loadedFiles.length ? `
+    <div style="margin-top:1.5rem">
+      <div style="font-size:.82rem;font-weight:700;color:#1e2433;margin-bottom:.75rem">Geladene Dateien</div>
+      ${APP.loadedFiles.map(f => `
+        <div style="display:flex;align-items:center;gap:.75rem;padding:.6rem .8rem;background:#f8f9fd;border-radius:8px;margin-bottom:.35rem;border:1px solid #e4e9f5">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:.8rem;font-weight:600;color:#1e2433;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div>
+            <div style="font-size:.7rem;color:#8b95a9">${f.txnCount?.toLocaleString('de-DE')} Buchungen · ${(f.years||[]).join(', ')}</div>
+          </div>
+          <button onclick="removeFile('${f.id}')" style="padding:.25rem .6rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0">Entfernen</button>
+        </div>`).join('')}
+    </div>` : ''}`;
 }
 
 export function movePlDefItem(id, dir) {
