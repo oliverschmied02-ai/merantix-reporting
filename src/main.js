@@ -239,7 +239,9 @@ async function loadAndShowApp(user) {
     console.warn('Could not load data:', e);
   }
 
-  setScreen('upload-screen');
+  buildPL();
+  setScreen('pl-screen');
+  requestAnimationFrame(updateAboveTableHeight);
 }
 
 // ── App init ──────────────────────────────────────────────────────────
