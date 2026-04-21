@@ -44,19 +44,28 @@ export function renderCoATree() {
   const tree = document.getElementById('coa-tree');
   tree.innerHTML = '';
 
-  const defLen = APP.plDef.filter(i => i.type !== 'computed').length;
-  let visIdx = 0;
+  const defLen = APP.plDef.length;
 
-  for (const item of APP.plDef) {
-    if (item.type === 'computed') continue;
-    const isFirst = visIdx === 0;
-    const isLast  = visIdx === defLen - 1;
+  APP.plDef.forEach((item, idx) => {
+    const isFirst = idx === 0;
+    const isLast  = idx === defLen - 1;
     const reorderBtns = `
       <div class="coa-reorder">
         <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',-1)" title="Nach oben" ${isFirst?'disabled':''}>▲</button>
         <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',+1)" title="Nach unten" ${isLast?'disabled':''}>▼</button>
       </div>`;
-    visIdx++;
+
+    // Computed rows: show as a separator/subtotal row (not editable, just reorderable)
+    if (item.type === 'computed') {
+      const div = document.createElement('div');
+      div.className = 'coa-computed-row';
+      div.innerHTML = `
+        ${reorderBtns}
+        <span class="coa-computed-label">${item.label}</span>
+        <span class="coa-computed-badge">= Berechnet</span>`;
+      tree.appendChild(div);
+      return;
+    }
 
     if (item.type === 'ratio') {
       const itemDiv = document.createElement('div');
@@ -79,7 +88,7 @@ export function renderCoATree() {
           </select>
         </div>`;
       tree.appendChild(itemDiv);
-      continue;
+      return;
     }
 
     const isMixed = item.type === 'section_mixed';
@@ -134,7 +143,7 @@ export function renderCoATree() {
 
     itemDiv.innerHTML = html;
     tree.appendChild(itemDiv);
-  }
+  });
 }
 
 export function addSubDialog(itemId) {
@@ -450,16 +459,10 @@ export function renderDataStats() {
 }
 
 export function movePlDefItem(id, dir) {
-  const visible = APP.plDef.filter(i => i.type !== 'computed');
-  const visIdx = visible.findIndex(i => i.id === id);
-  if (visIdx === -1) return;
-  const targetVisIdx = visIdx + dir;
-  if (targetVisIdx < 0 || targetVisIdx >= visible.length) return;
-
-  const targetId = visible[targetVisIdx].id;
-  const fromIdx  = APP.plDef.findIndex(i => i.id === id);
-  const toIdx    = APP.plDef.findIndex(i => i.id === targetId);
-  if (fromIdx === -1 || toIdx === -1) return;
+  const fromIdx = APP.plDef.findIndex(i => i.id === id);
+  if (fromIdx === -1) return;
+  const toIdx = fromIdx + dir;
+  if (toIdx < 0 || toIdx >= APP.plDef.length) return;
   [APP.plDef[fromIdx], APP.plDef[toIdx]] = [APP.plDef[toIdx], APP.plDef[fromIdx]];
   saveCoA();
 }

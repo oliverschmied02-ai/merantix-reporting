@@ -762,3 +762,15 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
   cursor: pointer; font-family: inherit; transition: background .15s;
 }
 .sm-danger-btn:hover { background: #b91c1c; }
+
+/* ── CoA computed rows ── */
+.coa-computed-row {
+  display: flex; align-items: center; gap: .5rem;
+  background: #eef1ff; border: 1px solid #c7d4f5; border-radius: 8px;
+  padding: .45rem .7rem; margin-bottom: .35rem;
+}
+.coa-computed-label { flex: 1; font-size: .8rem; font-weight: 700; color: #4f6ef7; }
+.coa-computed-badge {
+  font-size: .65rem; font-weight: 600; color: #4f6ef7;
+  background: #fff; border: 1px solid #c7d4f5; border-radius: 20px; padding: .1rem .45rem;
+}
