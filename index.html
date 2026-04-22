@@ -200,6 +200,7 @@
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
             <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
+            <button class="ctrl" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren" style="cursor:pointer">↓ CSV</button>
             <button class="btn-settings" onclick="toggleSettings()" title="Einstellungen">⚙️</button>
           </div>
 
@@ -434,6 +435,23 @@
         </div><!-- /sm-main -->
       </div><!-- /sm-inner -->
     </div><!-- /settings-modal -->
+
+    <!-- ═══ TEMP PASSWORD MODAL ═══ -->
+    <div id="temp-pw-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center">
+      <div class="login-card" style="max-width:400px;margin:0 auto">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+          <div class="login-title" style="margin:0">✓ Konto erstellt</div>
+          <button onclick="closeTempPwModal()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+        </div>
+        <div style="font-size:.8rem;color:#8b95a9;margin-bottom:1rem">Bitte teilen Sie dieses temporäre Passwort sicher mit dem Benutzer. Es wird nur einmal angezeigt.</div>
+        <div style="font-size:.78rem;color:#4f6ef7;font-weight:600;margin-bottom:.35rem" id="temp-pw-name"></div>
+        <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:1.25rem">
+          <code id="temp-pw-value" style="flex:1;background:#f4f6fb;border:1px solid #e4e9f5;border-radius:8px;padding:.6rem .85rem;font-size:.9rem;font-family:monospace;letter-spacing:.05em;word-break:break-all"></code>
+          <button id="temp-pw-copy-btn" onclick="copyTempPassword()" style="padding:.5rem .75rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">Kopieren</button>
+        </div>
+        <button onclick="closeTempPwModal()" style="width:100%;padding:.6rem;background:#f4f6fb;color:#4f6ef7;border:1px solid #e4e9f5;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Schließen</button>
+      </div>
+    </div>
 
     <div id="toast"></div>
 

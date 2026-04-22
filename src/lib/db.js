@@ -1,37 +1,36 @@
-// All server calls include the JWT token stored in localStorage
+// Auth is handled via httpOnly session cookie — no tokens in JS/localStorage.
 
-function authHeaders() {
-  const token = localStorage.getItem('gdpdu_token');
-  return { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) };
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+const CREDS = { credentials: 'same-origin' };
+
+async function apiFetch(url, options = {}) {
+  return fetch(url, { ...CREDS, ...options });
 }
 
 export async function login(email, password) {
-  const res = await fetch('/api/auth/login', {
+  const res = await apiFetch('/api/auth/login', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ email, password }),
   });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Login failed');
-  localStorage.setItem('gdpdu_token', data.token);
   return data.user;
 }
 
-export function logout() {
-  localStorage.removeItem('gdpdu_token');
+export async function logout() {
+  await apiFetch('/api/auth/logout', { method: 'POST' });
 }
 
 export async function checkAuth() {
-  const token = localStorage.getItem('gdpdu_token');
-  if (!token) return null;
-  const res = await fetch('/api/auth/me', { headers: authHeaders() });
-  if (!res.ok) { localStorage.removeItem('gdpdu_token'); return null; }
+  const res = await apiFetch('/api/auth/me');
+  if (!res.ok) return null;
   const data = await res.json();
   return data.user;
 }
 
 export async function loadFromServer() {
-  const res = await fetch('/api/data', { headers: authHeaders() });
+  const res = await apiFetch('/api/data');
   if (!res.ok) throw new Error('Load failed: ' + res.status);
   const data = await res.json();
   if (!data) return null;
@@ -43,9 +42,9 @@ export async function loadFromServer() {
 }
 
 export async function saveFileToServer(file, transactions, accountNames) {
-  const res = await fetch('/api/data', {
+  const res = await apiFetch('/api/data', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({
       file,
       transactions: transactions.map(t => ({ ...t, datum: t.datum ? t.datum.toISOString() : null })),
@@ -59,22 +58,22 @@ export async function saveFileToServer(file, transactions, accountNames) {
 }
 
 export async function deleteFileFromServer(fileId) {
-  await fetch(`/api/data/${fileId}`, { method: 'DELETE', headers: authHeaders() });
+  await apiFetch(`/api/data/${fileId}`, { method: 'DELETE' });
 }
 
 export async function clearFromServer() {
-  await fetch('/api/data', { method: 'DELETE', headers: authHeaders() });
+  await apiFetch('/api/data', { method: 'DELETE' });
 }
 
 export async function getUsers() {
-  const res = await fetch('/api/users', { headers: authHeaders() });
+  const res = await apiFetch('/api/users');
   return res.json();
 }
 
 export async function createUser(email, name, password) {
-  const res = await fetch('/api/users', {
+  const res = await apiFetch('/api/users', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ email, name, password }),
   });
   const data = await res.json();
@@ -83,9 +82,9 @@ export async function createUser(email, name, password) {
 }
 
 export async function changeMyPassword(password) {
-  const res = await fetch('/api/auth/me/password', {
+  const res = await apiFetch('/api/auth/me/password', {
     method: 'PATCH',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ password }),
   });
   const data = await res.json();
@@ -93,9 +92,9 @@ export async function changeMyPassword(password) {
 }
 
 export async function updateUserRole(id, role) {
-  const res = await fetch(`/api/users/${id}/role`, {
+  const res = await apiFetch(`/api/users/${id}/role`, {
     method: 'PATCH',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ role }),
   });
   const data = await res.json();
@@ -103,9 +102,9 @@ export async function updateUserRole(id, role) {
 }
 
 export async function resetUserPassword(id, password) {
-  const res = await fetch(`/api/users/${id}/password`, {
+  const res = await apiFetch(`/api/users/${id}/password`, {
     method: 'PATCH',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ password }),
   });
   const data = await res.json();
@@ -113,26 +112,26 @@ export async function resetUserPassword(id, password) {
 }
 
 export async function saveBulkMappings(mappings) {
-  const res = await fetch('/api/mappings', {
+  const res = await apiFetch('/api/mappings', {
     method: 'POST',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ mappings }),
   });
   if (!res.ok) throw new Error('Save mappings failed');
 }
 
 export async function deleteMappings(txnIds) {
-  await fetch('/api/mappings', {
+  await apiFetch('/api/mappings', {
     method: 'DELETE',
-    headers: authHeaders(),
+    headers: JSON_HEADERS,
     body: JSON.stringify({ txnIds }),
   });
 }
 
 export async function requestAccess(name, email, message) {
-  const res = await fetch('/api/auth/request-access', {
+  const res = await apiFetch('/api/auth/request-access', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: JSON_HEADERS,
     body: JSON.stringify({ name, email, message }),
   });
   const data = await res.json();
@@ -140,22 +139,22 @@ export async function requestAccess(name, email, message) {
 }
 
 export async function getAccessRequests() {
-  const res = await fetch('/api/users/requests', { headers: authHeaders() });
+  const res = await apiFetch('/api/users/requests');
   return res.json();
 }
 
 export async function approveRequest(id) {
-  const res = await fetch(`/api/users/requests/${id}/approve`, { method: 'POST', headers: authHeaders() });
+  const res = await apiFetch(`/api/users/requests/${id}/approve`, { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error);
   return data; // { user, tempPassword }
 }
 
 export async function rejectRequest(id) {
-  await fetch(`/api/users/requests/${id}`, { method: 'DELETE', headers: authHeaders() });
+  await apiFetch(`/api/users/requests/${id}`, { method: 'DELETE' });
 }
 
 export async function deleteUser(id) {
-  const res = await fetch(`/api/users/${id}`, { method: 'DELETE', headers: authHeaders() });
+  const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error((await res.json()).error);
 }

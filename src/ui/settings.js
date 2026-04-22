@@ -2,7 +2,7 @@ import { APP } from '../state.js';
 import { esc } from '../lib/utils.js';
 import { deepClone } from '../lib/utils.js';
 import { DEFAULT_PL_DEF } from '../data/default-pl.js';
-import { saveCoA } from '../lib/storage.js';
+import { saveCoA, saveRules } from '../lib/storage.js';
 import { isInGUV } from '../lib/compute.js';
 import { showToast } from './screen.js';
 import { initTransactionPicker } from './rules.js';
@@ -318,13 +318,28 @@ export function removeAccount(itemId, subId, acct) {
 
 export function removeSub(itemId, subId) {
   const item = APP.plDef.find(i => i.id === itemId);
-  if (item) item.subs = item.subs.filter(s => s.id !== subId);
+  if (!item) return;
+  const sub = item.subs?.find(s => s.id === subId);
+  const label = sub ? `"${sub.label}"` : 'diese Unterkategorie';
+  const orphanCount = APP.rules.filter(r => r.targetItemId === itemId && r.targetSubId === subId).length;
+  const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
+  if (!confirm(`${label} löschen?${warning}`)) return;
+  item.subs = item.subs.filter(s => s.id !== subId);
+  APP.rules = APP.rules.filter(r => !(r.targetItemId === itemId && r.targetSubId === subId));
   saveCoA();
+  saveRules();
 }
 
 export function removeItem(itemId) {
+  const item = APP.plDef.find(i => i.id === itemId);
+  if (!item) return;
+  const orphanCount = APP.rules.filter(r => r.targetItemId === itemId).length;
+  const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
+  if (!confirm(`"${item.label}" löschen?${warning}`)) return;
   APP.plDef = APP.plDef.filter(i => i.id !== itemId);
+  APP.rules = APP.rules.filter(r => r.targetItemId !== itemId);
   saveCoA();
+  saveRules();
 }
 
 // New Section Modal

@@ -233,3 +233,51 @@ export function setViewMode(mode) {
     b.classList.toggle('active', b.dataset.mode === mode));
   buildPL();
 }
+
+export function exportPLCSV() {
+  if (!APP.plData) return;
+  const { periodPLs, ytdPL, periods, year } = APP.plData;
+
+  function csvCell(v) {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  }
+  function fmtNum(v) { return v === 0 ? '0' : v.toFixed(2).replace('.', ','); }
+
+  const header = ['Position', ...periods.map(p => p.label), `YTD ${year}`];
+  const rows = [header];
+
+  for (const item of APP.plDef) {
+    if (item.type === 'computed' || item.type === 'ratio') {
+      const v_arr = periodPLs.map(pl => pl.computed[item.id] ?? 0);
+      const vYTD  = ytdPL.computed[item.id] ?? 0;
+      rows.push([item.label, ...v_arr.map(fmtNum), fmtNum(vYTD)]);
+      rows.push([]);
+      continue;
+    }
+
+    const isMixed = item.type === 'section_mixed';
+    const v_arr = periodPLs.map(pl => isMixed ? pl.computed[item.id] || 0 : pl.vals[item.id]?.amount || 0);
+    const vYTD  = isMixed ? ytdPL.computed[item.id] || 0 : ytdPL.vals[item.id]?.amount || 0;
+    rows.push([item.label, ...v_arr.map(fmtNum), fmtNum(vYTD)]);
+
+    for (const sub of item.subs) {
+      const sv_arr = periodPLs.map(pl => pl.vals[item.id]?.bySubId[sub.id]?.amount || 0);
+      const svYTD  = ytdPL.vals[item.id]?.bySubId[sub.id]?.amount || 0;
+      if (sv_arr.every(v => v === 0) && svYTD === 0) continue;
+      rows.push(['  ' + sub.label, ...sv_arr.map(fmtNum), fmtNum(svYTD)]);
+    }
+    rows.push([]);
+  }
+
+  const csv = rows.map(r => r.map(csvCell).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `PL_${year}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

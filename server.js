@@ -2,86 +2,158 @@ import express from 'express';
 import pg from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import rateLimit from 'express-rate-limit';
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app  = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-prod';
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set.');
+  process.exit(1);
+}
+const JWT_SECRET = process.env.JWT_SECRET;
+
+function buildSslConfig() {
+  if (!process.env.DATABASE_URL) return false;
+  if (process.env.DATABASE_SSL_CA) {
+    return { rejectUnauthorized: true, ca: process.env.DATABASE_SSL_CA };
+  }
+  if (process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false') {
+    console.warn('WARNING: DATABASE_SSL_REJECT_UNAUTHORIZED=false — TLS certificate validation is disabled.');
+    return { rejectUnauthorized: false };
+  }
+  return { rejectUnauthorized: true };
+}
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+  ssl: buildSslConfig(),
 });
 
 app.use(express.json({ limit: '100mb' }));
+app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'dist')));
 
-// ── DB INIT ───────────────────────────────────────────────────────────
-async function initDB() {
+// ── DB MIGRATIONS ─────────────────────────────────────────────────────
+// Each migration runs exactly once, tracked by version number in schema_migrations.
+const MIGRATIONS = [
+  {
+    version: 1,
+    description: 'Initial schema',
+    sql: `
+      CREATE TABLE IF NOT EXISTS users (
+        id            SERIAL PRIMARY KEY,
+        email         TEXT UNIQUE NOT NULL,
+        name          TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role          TEXT DEFAULT 'viewer',
+        created_at    TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS gdpdu_files (
+        id           TEXT PRIMARY KEY,
+        name         TEXT NOT NULL,
+        company_name TEXT,
+        uploaded_by  INTEGER REFERENCES users(id),
+        uploaded_at  TIMESTAMPTZ DEFAULT NOW(),
+        txn_count    INTEGER,
+        years        JSONB
+      );
+      CREATE TABLE IF NOT EXISTS transactions (
+        id         SERIAL PRIMARY KEY,
+        file_id    TEXT REFERENCES gdpdu_files(id) ON DELETE CASCADE,
+        ktonr      INTEGER,
+        gktonr     INTEGER,
+        soll       NUMERIC,
+        haben      NUMERIC,
+        datum      DATE,
+        text       TEXT,
+        beleg      TEXT,
+        wj_month   INTEGER,
+        wj_year    INTEGER,
+        stapel_raw TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_txn_file ON transactions(file_id);
+      CREATE INDEX IF NOT EXISTS idx_txn_year ON transactions(wj_year);
+      CREATE TABLE IF NOT EXISTS account_names (
+        ktonr INTEGER PRIMARY KEY,
+        name  TEXT
+      );
+      CREATE TABLE IF NOT EXISTS direct_mappings (
+        txn_id  INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+        item_id TEXT NOT NULL,
+        sub_id  TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS access_requests (
+        id         SERIAL PRIMARY KEY,
+        name       TEXT NOT NULL,
+        email      TEXT NOT NULL,
+        message    TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `,
+  },
+  {
+    version: 2,
+    description: 'Add role column to users (idempotent for existing installs)',
+    sql: `ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'viewer';
+          UPDATE users SET role='admin' WHERE id=(SELECT MIN(id) FROM users) AND role IS NULL;`,
+  },
+  {
+    version: 3,
+    description: 'Add audit_log table',
+    sql: `
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id         SERIAL PRIMARY KEY,
+        user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        action     TEXT NOT NULL,
+        detail     TEXT,
+        ip         TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_audit_user    ON audit_log(user_id);
+      CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+    `,
+  },
+];
+
+async function runMigrations() {
   await pool.query(`
-    CREATE TABLE IF NOT EXISTS users (
-      id           SERIAL PRIMARY KEY,
-      email        TEXT UNIQUE NOT NULL,
-      name         TEXT NOT NULL,
-      password_hash TEXT NOT NULL,
-      created_at   TIMESTAMPTZ DEFAULT NOW()
-    );
-
-    CREATE TABLE IF NOT EXISTS gdpdu_files (
-      id           TEXT PRIMARY KEY,
-      name         TEXT NOT NULL,
-      company_name TEXT,
-      uploaded_by  INTEGER REFERENCES users(id),
-      uploaded_at  TIMESTAMPTZ DEFAULT NOW(),
-      txn_count    INTEGER,
-      years        JSONB
-    );
-
-    CREATE TABLE IF NOT EXISTS transactions (
-      id          SERIAL PRIMARY KEY,
-      file_id     TEXT REFERENCES gdpdu_files(id) ON DELETE CASCADE,
-      ktonr       INTEGER,
-      gktonr      INTEGER,
-      soll        NUMERIC,
-      haben       NUMERIC,
-      datum       DATE,
-      text        TEXT,
-      beleg       TEXT,
-      wj_month    INTEGER,
-      wj_year     INTEGER,
-      stapel_raw  TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_txn_file ON transactions(file_id);
-    CREATE INDEX IF NOT EXISTS idx_txn_year ON transactions(wj_year);
-
-    CREATE TABLE IF NOT EXISTS account_names (
-      ktonr INTEGER PRIMARY KEY,
-      name  TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS direct_mappings (
-      txn_id  INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
-      item_id TEXT NOT NULL,
-      sub_id  TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS access_requests (
-      id         SERIAL PRIMARY KEY,
-      name       TEXT NOT NULL,
-      email      TEXT NOT NULL,
-      message    TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW()
-    );
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version     INTEGER PRIMARY KEY,
+      description TEXT,
+      applied_at  TIMESTAMPTZ DEFAULT NOW()
+    )
   `);
+  const { rows } = await pool.query('SELECT version FROM schema_migrations');
+  const applied = new Set(rows.map(r => r.version));
 
-  // Add role column if it doesn't exist yet (migration)
-  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'viewer'`);
-  // Ensure the first user (env-bootstrapped admin) keeps admin role
-  await pool.query(`UPDATE users SET role='admin' WHERE id=(SELECT MIN(id) FROM users) AND role IS NULL`);
+  for (const m of MIGRATIONS) {
+    if (applied.has(m.version)) continue;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(m.sql);
+      await client.query(
+        'INSERT INTO schema_migrations (version, description) VALUES ($1, $2)',
+        [m.version, m.description]
+      );
+      await client.query('COMMIT');
+      console.log(`✓ Migration ${m.version}: ${m.description}`);
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw new Error(`Migration ${m.version} failed: ${e.message}`);
+    } finally {
+      client.release();
+    }
+  }
+}
+
+async function initDB() {
+  await runMigrations();
 
   // Create initial admin from env vars if no users exist yet
   const { rows } = await pool.query('SELECT COUNT(*) FROM users');
@@ -96,8 +168,16 @@ async function initDB() {
 }
 
 // ── AUTH MIDDLEWARE ───────────────────────────────────────────────────
+const COOKIE_NAME = 'gdpdu_session';
+const COOKIE_OPTS = {
+  httpOnly: true,
+  sameSite: 'strict',
+  secure: process.env.NODE_ENV === 'production',
+  maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+};
+
 function requireAuth(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = req.cookies[COOKIE_NAME] ?? req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ error: 'Not authenticated' });
   try {
     req.user = jwt.verify(token, JWT_SECRET);
@@ -112,8 +192,45 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+const MIN_PASSWORD_LENGTH = 6;
+function validatePassword(password) {
+  if (!password || password.length < MIN_PASSWORD_LENGTH)
+    return `Passwort zu kurz (min. ${MIN_PASSWORD_LENGTH} Zeichen)`;
+  return null;
+}
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function validateEmail(email) {
+  if (!email || !EMAIL_RE.test(email)) return 'Ungültige E-Mail-Adresse';
+  return null;
+}
+
+function logAudit(userId, action, detail, req) {
+  const ip = req?.headers?.['x-forwarded-for']?.split(',')[0].trim() ?? req?.socket?.remoteAddress ?? null;
+  pool.query(
+    'INSERT INTO audit_log (user_id, action, detail, ip) VALUES ($1, $2, $3, $4)',
+    [userId ?? null, action, detail ?? null, ip]
+  ).catch(err => console.error('Audit log error:', err.message));
+}
+
 // ── AUTH ROUTES ───────────────────────────────────────────────────────
-app.post('/api/auth/login', async (req, res) => {
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anmeldeversuche. Bitte in 15 Minuten erneut versuchen.' },
+});
+
+const requestAccessLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Zu viele Anfragen von dieser IP. Bitte später erneut versuchen.' },
+});
+
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
   try {
     const { email, password } = req.body;
     const { rows } = await pool.query('SELECT * FROM users WHERE email = $1', [email?.toLowerCase()]);
@@ -126,7 +243,9 @@ app.post('/api/auth/login', async (req, res) => {
       JWT_SECRET,
       { expiresIn: '30d' }
     );
-    res.json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role } });
+    logAudit(user.id, 'login', user.email, req);
+    res.cookie(COOKIE_NAME, token, COOKIE_OPTS);
+    res.json({ user: { id: user.id, email: user.email, name: user.name, role: user.role } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -136,11 +255,18 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   res.json({ user: req.user });
 });
 
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie(COOKIE_NAME, { ...COOKIE_OPTS, maxAge: 0 });
+  res.json({ ok: true });
+});
+
 // ── ACCESS REQUESTS ───────────────────────────────────────────────────
-app.post('/api/auth/request-access', async (req, res) => {
+app.post('/api/auth/request-access', requestAccessLimiter, async (req, res) => {
   try {
     const { name, email, message } = req.body;
     if (!name || !email) return res.status(400).json({ error: 'Name und E-Mail erforderlich' });
+    const emailErr = validateEmail(email);
+    if (emailErr) return res.status(400).json({ error: emailErr });
     // Check if email already exists as user
     const existing = await pool.query('SELECT id FROM users WHERE email=$1', [email.toLowerCase()]);
     if (existing.rows.length) return res.status(400).json({ error: 'E-Mail bereits registriert' });
@@ -176,6 +302,7 @@ app.post('/api/users/requests/:id/approve', requireAuth, requireAdmin, async (re
       [req_.email, req_.name, hash, 'viewer']
     );
     await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
+    logAudit(req.user.id, 'access_request.approve', `email=${req_.email}`, req);
     res.json({ user: ins.rows[0], tempPassword });
   } catch (e) {
     res.status(400).json({ error: e.message.includes('unique') ? 'E-Mail bereits registriert' : e.message });
@@ -184,6 +311,7 @@ app.post('/api/users/requests/:id/approve', requireAuth, requireAdmin, async (re
 
 app.delete('/api/users/requests/:id', requireAuth, requireAdmin, async (req, res) => {
   await pool.query('DELETE FROM access_requests WHERE id=$1', [req.params.id]);
+  logAudit(req.user.id, 'access_request.reject', `request_id=${req.params.id}`, req);
   res.json({ ok: true });
 });
 
@@ -197,11 +325,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { email, name, password, role } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'email, name, password required' });
+    const emailErr = validateEmail(email);
+    if (emailErr) return res.status(400).json({ error: emailErr });
     const hash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
       'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4) RETURNING id, email, name, role',
       [email.toLowerCase(), name, hash, role === 'admin' ? 'admin' : 'viewer']
     );
+    logAudit(req.user.id, 'user.create', `email=${email} role=${rows[0].role}`, req);
     res.json(rows[0]);
   } catch (e) {
     res.status(400).json({ error: e.message.includes('unique') ? 'Email bereits vergeben' : e.message });
@@ -212,9 +343,11 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
 app.patch('/api/auth/me/password', requireAuth, async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 6) return res.status(400).json({ error: 'Passwort zu kurz (min. 6 Zeichen)' });
+    const pwErr = validatePassword(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
     const hash = await bcrypt.hash(password, 10);
     await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.user.id]);
+    logAudit(req.user.id, 'user.password_change', 'self', req);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -225,9 +358,11 @@ app.patch('/api/auth/me/password', requireAuth, async (req, res) => {
 app.patch('/api/users/:id/password', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { password } = req.body;
-    if (!password || password.length < 4) return res.status(400).json({ error: 'Passwort zu kurz' });
+    const pwErr = validatePassword(password);
+    if (pwErr) return res.status(400).json({ error: pwErr });
     const hash = await bcrypt.hash(password, 10);
     await pool.query('UPDATE users SET password_hash=$1 WHERE id=$2', [hash, req.params.id]);
+    logAudit(req.user.id, 'user.password_reset', `target_user_id=${req.params.id}`, req);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -241,6 +376,7 @@ app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => 
     if (!['admin', 'viewer'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
     if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot change your own role' });
     await pool.query('UPDATE users SET role=$1 WHERE id=$2', [role, req.params.id]);
+    logAudit(req.user.id, 'user.role_change', `target_user_id=${req.params.id} role=${role}`, req);
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -250,6 +386,7 @@ app.patch('/api/users/:id/role', requireAuth, requireAdmin, async (req, res) => 
 app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   if (parseInt(req.params.id) === req.user.id) return res.status(400).json({ error: 'Cannot delete yourself' });
   await pool.query('DELETE FROM users WHERE id = $1', [req.params.id]);
+  logAudit(req.user.id, 'user.delete', `target_user_id=${req.params.id}`, req);
   res.json({ ok: true });
 });
 
@@ -354,6 +491,7 @@ app.post('/api/data', requireAuth, async (req, res) => {
 // ── DATA: DELETE ONE FILE ─────────────────────────────────────────────
 app.delete('/api/data/:fileId', requireAuth, async (req, res) => {
   await pool.query('DELETE FROM gdpdu_files WHERE id = $1', [req.params.fileId]);
+  logAudit(req.user.id, 'data.delete_file', `file_id=${req.params.fileId}`, req);
   res.json({ ok: true });
 });
 
@@ -361,6 +499,7 @@ app.delete('/api/data/:fileId', requireAuth, async (req, res) => {
 app.delete('/api/data', requireAuth, async (req, res) => {
   await pool.query('DELETE FROM gdpdu_files'); // cascades to transactions
   await pool.query('DELETE FROM account_names');
+  logAudit(req.user.id, 'data.clear_all', null, req);
   res.json({ ok: true });
 });
 

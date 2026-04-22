@@ -2,7 +2,7 @@ import './styles/main.css';
 import { loadAppState, loadKpiOrder } from './lib/storage.js';
 import { APP, resetAPP } from './state.js';
 import { setScreen, setMainView, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
-import { buildPL, toggleSection, toggleSub, setViewMode } from './ui/pl-table.js';
+import { buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV } from './ui/pl-table.js';
 import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
 import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
@@ -18,12 +18,13 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest } from './lib/db.js';
+import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
 // ── Expose globals ────────────────────────────────────────────────────
 Object.assign(window, {
   setMainView, showToast, setLoading, updateAboveTableHeight,
-  buildPL, toggleSection, toggleSub, setViewMode,
+  buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV,
   openDrill, renderDrillTable, closeDrill,
   toggleSettings, switchSettingsTab, renderCoATree,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
@@ -85,8 +86,8 @@ document.addEventListener('keydown', e => {
 });
 
 // ── Logout ────────────────────────────────────────────────────────────
-function doLogout() {
-  logout();
+async function doLogout() {
+  await logout().catch(() => {});
   resetAPP();
   toggleSettings(false);
   showLoginScreen();
@@ -225,6 +226,7 @@ async function submitAccessRequest() {
   const btn     = document.getElementById('req-btn');
   errEl.classList.add('hidden');
   if (!name || !email) { errEl.textContent = 'Name und E-Mail erforderlich.'; errEl.classList.remove('hidden'); return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { errEl.textContent = 'Ungültige E-Mail-Adresse.'; errEl.classList.remove('hidden'); return; }
   btn.disabled = true; btn.textContent = '…';
   try {
     await requestAccess(name, email, message);
@@ -257,13 +259,13 @@ async function renderRequestsList() {
     container.innerHTML = reqs.map(r => `
       <div style="background:#fff;border:1px solid #e4e9f5;border-radius:12px;padding:1rem 1.25rem;margin-bottom:.75rem;display:flex;align-items:flex-start;gap:1rem">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;color:#1e2433;font-size:.85rem">${r.name}</div>
-          <div style="color:#4f6ef7;font-size:.75rem;margin-top:.1rem">${r.email}</div>
-          ${r.message ? `<div style="color:#8b95a9;font-size:.75rem;margin-top:.4rem;font-style:italic">"${r.message}"</div>` : ''}
+          <div style="font-weight:600;color:#1e2433;font-size:.85rem">${esc(r.name)}</div>
+          <div style="color:#4f6ef7;font-size:.75rem;margin-top:.1rem">${esc(r.email)}</div>
+          ${r.message ? `<div style="color:#8b95a9;font-size:.75rem;margin-top:.4rem;font-style:italic">"${esc(r.message)}"</div>` : ''}
           <div style="color:#a0aabb;font-size:.7rem;margin-top:.4rem">${new Date(r.created_at).toLocaleDateString('de-DE')}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:.35rem;flex-shrink:0">
-          <button onclick="approveAccessRequest(${r.id},'${r.name}')" style="padding:.3rem .7rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit">✓ Freischalten</button>
+          <button onclick="approveAccessRequest(${r.id})" style="padding:.3rem .7rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit">✓ Freischalten</button>
           <button onclick="rejectAccessRequest(${r.id})" style="padding:.3rem .7rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">✕ Ablehnen</button>
         </div>
       </div>`).join('');
@@ -272,14 +274,14 @@ async function renderRequestsList() {
   }
 }
 
-async function approveAccessRequest(id, name) {
+async function approveAccessRequest(id) {
   try {
-    const { tempPassword } = await approveRequest(id);
+    const { tempPassword, user } = await approveRequest(id);
+    const name = user?.name ?? '';
     await renderRequestsList();
     await renderUsersList();
-    showToast(`${name} freigeschaltet`);
-    // Show temp password in a prompt-style dialog
-    alert(`✓ Konto erstellt!\n\nBenutzer: ${name}\nTemporäres Passwort:\n\n${tempPassword}\n\nBitte teilen Sie dieses Passwort sicher mit dem Benutzer.`);
+    showToast(`${esc(name)} freigeschaltet`);
+    showTempPwModal(name, tempPassword);
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -296,6 +298,27 @@ async function rejectAccessRequest(id) {
   }
 }
 window.rejectAccessRequest = rejectAccessRequest;
+
+// ── Temp password modal ───────────────────────────────────────────────
+function showTempPwModal(name, password) {
+  document.getElementById('temp-pw-name').textContent = name;
+  document.getElementById('temp-pw-value').textContent = password;
+  document.getElementById('temp-pw-copy-btn').textContent = 'Kopieren';
+  document.getElementById('temp-pw-modal').style.display = 'flex';
+}
+function closeTempPwModal() {
+  document.getElementById('temp-pw-value').textContent = '';
+  document.getElementById('temp-pw-modal').style.display = 'none';
+}
+async function copyTempPassword() {
+  const pw = document.getElementById('temp-pw-value').textContent;
+  await navigator.clipboard.writeText(pw);
+  const btn = document.getElementById('temp-pw-copy-btn');
+  btn.textContent = '✓ Kopiert';
+  setTimeout(() => { btn.textContent = 'Kopieren'; }, 2000);
+}
+window.closeTempPwModal = closeTempPwModal;
+window.copyTempPassword = copyTempPassword;
 
 // ── Reset ─────────────────────────────────────────────────────────────
 function resetAll() {
