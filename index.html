@@ -366,6 +366,12 @@
                   <input type="text" class="search-box" id="txn-picker-search"
                          placeholder="Buchungen durchsuchen (alle Spalten)…"
                          oninput="updateTransactionPicker()" />
+                  <div style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem">
+                    <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.75rem;color:#4b5563;user-select:none">
+                      <input type="checkbox" id="txn-filter-guv" onchange="updateTransactionPicker()" style="accent-color:#4f6ef7" />
+                      Nur GuV-Konten (400000–499999, 600000–799999)
+                    </label>
+                  </div>
                   <div class="match-count" id="txn-picker-count"
                        style="margin-top: 0.3rem; font-size: 0.75rem; color: #6b7280"></div>
                 </div>

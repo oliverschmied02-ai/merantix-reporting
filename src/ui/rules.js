@@ -1,6 +1,7 @@
 import { APP } from '../state.js';
 import { esc, fmtFull } from '../lib/utils.js';
 import { resolveMapping } from '../lib/resolve.js';
+import { isInGUV } from '../lib/compute.js';
 import { saveRules } from '../lib/storage.js';
 import { buildPL } from './pl-table.js';
 import { showToast } from './screen.js';
@@ -15,8 +16,13 @@ export function initTransactionPicker() {
 }
 
 export function updateTransactionPicker() {
-  const query = document.getElementById('txn-picker-search').value.toLowerCase().trim();
+  const query   = document.getElementById('txn-picker-search').value.toLowerCase().trim();
+  const guvOnly = document.getElementById('txn-filter-guv')?.checked;
   let indexedAll = APP.allTransactions.map((t, i) => ({ t, i }));
+
+  if (guvOnly) {
+    indexedAll = indexedAll.filter(({ t }) => isInGUV(t.ktonr));
+  }
 
   if (query) {
     indexedAll = indexedAll.filter(({ t }) =>
