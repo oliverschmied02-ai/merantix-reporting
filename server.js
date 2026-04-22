@@ -63,6 +63,12 @@ async function initDB() {
       name  TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS direct_mappings (
+      txn_id  INTEGER PRIMARY KEY REFERENCES transactions(id) ON DELETE CASCADE,
+      item_id TEXT NOT NULL,
+      sub_id  TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS access_requests (
       id         SERIAL PRIMARY KEY,
       name       TEXT NOT NULL,
@@ -255,7 +261,12 @@ app.get('/api/data', requireAuth, async (req, res) => {
     );
     if (files.rows.length === 0) return res.json(null);
 
-    const txns   = await pool.query('SELECT * FROM transactions ORDER BY id');
+    const txns   = await pool.query(`
+      SELECT t.*, dm.item_id AS dm_item_id, dm.sub_id AS dm_sub_id
+      FROM transactions t
+      LEFT JOIN direct_mappings dm ON dm.txn_id = t.id
+      ORDER BY t.id
+    `);
     const accts  = await pool.query('SELECT * FROM account_names');
 
     res.json({
@@ -269,6 +280,7 @@ app.get('/api/data', requireAuth, async (req, res) => {
         uploadedBy:  f.uploader_name || '',
       })),
       transactions: txns.rows.map(t => ({
+        _dbId:      t.id,
         ktonr:      t.ktonr,
         gktonr:     t.gktonr,
         soll:       parseFloat(t.soll),
@@ -280,6 +292,7 @@ app.get('/api/data', requireAuth, async (req, res) => {
         wjYear:     t.wj_year,
         stapelRaw:  t.stapel_raw,
         _fileId:    t.file_id,
+        ...(t.dm_item_id ? { _directMapping: { itemId: t.dm_item_id, subId: t.dm_sub_id } } : {}),
       })),
       accountNames: accts.rows.map(r => [r.ktonr, r.name]),
     });
@@ -348,6 +361,40 @@ app.delete('/api/data/:fileId', requireAuth, async (req, res) => {
 app.delete('/api/data', requireAuth, async (req, res) => {
   await pool.query('DELETE FROM gdpdu_files'); // cascades to transactions
   await pool.query('DELETE FROM account_names');
+  res.json({ ok: true });
+});
+
+// ── DIRECT MAPPINGS ───────────────────────────────────────────────────
+app.post('/api/mappings', requireAuth, async (req, res) => {
+  const { mappings } = req.body; // [{ txnId, itemId, subId }]
+  if (!Array.isArray(mappings) || !mappings.length) return res.json({ ok: true });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const m of mappings) {
+      await client.query(
+        `INSERT INTO direct_mappings (txn_id, item_id, sub_id) VALUES ($1,$2,$3)
+         ON CONFLICT (txn_id) DO UPDATE SET item_id=$2, sub_id=$3`,
+        [m.txnId, m.itemId, m.subId]
+      );
+    }
+    await client.query('COMMIT');
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+app.delete('/api/mappings', requireAuth, async (req, res) => {
+  const { txnIds } = req.body;
+  if (Array.isArray(txnIds) && txnIds.length) {
+    await pool.query('DELETE FROM direct_mappings WHERE txn_id = ANY($1)', [txnIds]);
+  } else {
+    await pool.query('DELETE FROM direct_mappings');
+  }
   res.json({ ok: true });
 });
 

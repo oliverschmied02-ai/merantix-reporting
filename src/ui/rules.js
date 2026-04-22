@@ -3,6 +3,7 @@ import { esc, fmtFull } from '../lib/utils.js';
 import { resolveMapping } from '../lib/resolve.js';
 import { isInGUV } from '../lib/compute.js';
 import { saveRules } from '../lib/storage.js';
+import { saveBulkMappings } from '../lib/db.js';
 import { buildPL } from './pl-table.js';
 import { showToast } from './screen.js';
 
@@ -119,21 +120,32 @@ export function updateTransactionSelectionPanel() {
   }
 }
 
-export function applyBulkReclassification() {
+export async function applyBulkReclassification() {
   const targetVal = document.getElementById('txn-bulk-target-sub').value;
   if (!targetVal) { showToast('Bitte Kategorie wählen'); return; }
 
   const [targetItemId, targetSubId] = targetVal.split('|');
   const selectedIndices = [...APP.selectedTransactions];
 
+  const toSave = [];
   selectedIndices.forEach(idx => {
     const txn = APP.allTransactions[idx];
-    if (txn) txn._directMapping = { itemId: targetItemId, subId: targetSubId };
+    if (!txn) return;
+    txn._directMapping = { itemId: targetItemId, subId: targetSubId };
+    if (txn._dbId) toSave.push({ txnId: txn._dbId, itemId: targetItemId, subId: targetSubId });
   });
 
-  showToast(`${selectedIndices.length} Buchung${selectedIndices.length !== 1 ? 'en' : ''} zugeordnet`);
-  clearTransactionSelection();
   buildPL();
+  clearTransactionSelection();
+  showToast(`${selectedIndices.length} Buchung${selectedIndices.length !== 1 ? 'en' : ''} zugeordnet`);
+
+  if (toSave.length) {
+    try {
+      await saveBulkMappings(toSave);
+    } catch (e) {
+      showToast('Warnung: Zuordnung konnte nicht gespeichert werden: ' + e.message);
+    }
+  }
 }
 
 export function clearTransactionSelection() {

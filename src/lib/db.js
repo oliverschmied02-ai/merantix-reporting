@@ -112,6 +112,23 @@ export async function resetUserPassword(id, password) {
   if (!res.ok) throw new Error(data.error);
 }
 
+export async function saveBulkMappings(mappings) {
+  const res = await fetch('/api/mappings', {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ mappings }),
+  });
+  if (!res.ok) throw new Error('Save mappings failed');
+}
+
+export async function deleteMappings(txnIds) {
+  await fetch('/api/mappings', {
+    method: 'DELETE',
+    headers: authHeaders(),
+    body: JSON.stringify({ txnIds }),
+  });
+}
+
 export async function requestAccess(name, email, message) {
   const res = await fetch('/api/auth/request-access', {
     method: 'POST',
