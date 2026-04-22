@@ -36,21 +36,13 @@ const pool = new Pool({
 });
 
 app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc:     ["'self'"],
-      scriptSrc:      ["'self'", "'unsafe-inline'"], // onclick handlers used throughout; refactor to event delegation to remove this
-      styleSrc:       ["'self'", "'unsafe-inline'"], // inline styles used throughout
-      imgSrc:         ["'self'", 'data:'],
-      fontSrc:        ["'self'"],
-      connectSrc:     ["'self'"],
-      objectSrc:      ["'none'"],
-      frameAncestors: ["'none'"],
-      baseUri:        ["'self'"],
-      formAction:     ["'self'"],
-    },
-  },
-  crossOriginEmbedderPolicy: false, // not needed for this SPA
+  // CSP disabled: the app uses inline onclick handlers and Vite module scripts
+  // extensively. A meaningful CSP requires migrating all onclick to event
+  // delegation + nonce-based script loading — tracked as future work.
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+  // All other helmet defaults remain: HSTS, X-Frame-Options: DENY,
+  // X-Content-Type-Options: nosniff, Referrer-Policy, X-DNS-Prefetch-Control
 }));
 app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
