@@ -121,12 +121,14 @@ async function addUser() {
 window.addUser = addUser;
 
 let _resetTargetId = null;
+let _cachedUsers   = [];
 
 async function renderUsersList() {
   const container = document.getElementById('users-list');
   if (!container) return;
   try {
     const users = await getUsers();
+    _cachedUsers = users;
     const myId  = APP.currentUserId;
     container.innerHTML = `
       <div style="font-size:.82rem;font-weight:700;color:#1e2433;margin-bottom:.75rem">Aktive Benutzer (${users.length})</div>
@@ -136,8 +138,8 @@ async function renderUsersList() {
         return `
         <div style="display:flex;align-items:center;gap:.6rem;padding:.65rem .85rem;background:#f8f9fd;border:1px solid #e4e9f5;border-radius:10px;margin-bottom:.4rem">
           <div style="flex:1;min-width:0">
-            <div style="font-size:.82rem;font-weight:600;color:#1e2433">${u.name}${isMe ? ' <span style="color:#a0aabb;font-weight:400;font-size:.7rem">(du)</span>' : ''}</div>
-            <div style="font-size:.72rem;color:#8b95a9">${u.email}</div>
+            <div style="font-size:.82rem;font-weight:600;color:#1e2433">${esc(u.name)}${isMe ? ' <span style="color:#a0aabb;font-weight:400;font-size:.7rem">(du)</span>' : ''}</div>
+            <div style="font-size:.72rem;color:#8b95a9">${esc(u.email)}</div>
           </div>
           <span style="padding:.15rem .55rem;border-radius:20px;font-size:.68rem;font-weight:700;background:${isAdmin ? '#eef1ff' : '#f0fdf4'};color:${isAdmin ? '#4f6ef7' : '#16a34a'}">${isAdmin ? 'Admin' : 'Viewer'}</span>
           ${!isMe ? `
@@ -145,7 +147,7 @@ async function renderUsersList() {
             <option value="viewer" ${!isAdmin ? 'selected' : ''}>Viewer</option>
             <option value="admin" ${isAdmin ? 'selected' : ''}>Admin</option>
           </select>
-          <button onclick="startResetPw(${u.id},'${u.name}')" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
+          <button onclick="startResetPw(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
           <button onclick="removeUser(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">✕</button>
           ` : ''}
         </div>`;
@@ -153,8 +155,9 @@ async function renderUsersList() {
   } catch {}
 }
 
-function startResetPw(id, name) {
+function startResetPw(id) {
   _resetTargetId = id;
+  const name = _cachedUsers.find(u => u.id === id)?.name ?? '';
   document.getElementById('reset-pw-name').textContent = name;
   document.getElementById('reset-pw-val').value = '';
   document.getElementById('reset-pw-error').textContent = '';

@@ -3,6 +3,7 @@ import pg from 'pg';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
@@ -34,6 +35,23 @@ const pool = new Pool({
   ssl: buildSslConfig(),
 });
 
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:     ["'self'"],
+      scriptSrc:      ["'self'"],
+      styleSrc:       ["'self'", "'unsafe-inline'"], // inline styles used throughout
+      imgSrc:         ["'self'", 'data:'],
+      fontSrc:        ["'self'"],
+      connectSrc:     ["'self'"],
+      objectSrc:      ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri:        ["'self'"],
+      formAction:     ["'self'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // not needed for this SPA
+}));
 app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'dist')));
@@ -214,6 +232,17 @@ function logAudit(userId, action, detail, req) {
 }
 
 // ── AUTH ROUTES ───────────────────────────────────────────────────────
+// Authenticated API limiter: 300 req/min per user, applied after requireAuth sets req.user.
+// Used on all data/mapping/user-management routes so bulk operations can't hammer the DB.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: req => `user_${req.user.id}`,
+  message: { error: 'Zu viele Anfragen. Bitte kurz warten.' },
+});
+
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -260,7 +289,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// ── ACCESS REQUESTS ───────────────────────────────────────────────────
+// ── ACCESS REQUESTS (public) ──────────────────────────────────────────
 app.post('/api/auth/request-access', requestAccessLimiter, async (req, res) => {
   try {
     const { name, email, message } = req.body;
@@ -282,6 +311,9 @@ app.post('/api/auth/request-access', requestAccessLimiter, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+// Apply per-user rate limit to all routes below (all require authentication).
+app.use('/api', requireAuth, apiLimiter);
 
 app.get('/api/users/requests', requireAuth, requireAdmin, async (req, res) => {
   const { rows } = await pool.query('SELECT * FROM access_requests ORDER BY created_at DESC');
