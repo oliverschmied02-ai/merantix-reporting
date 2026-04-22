@@ -201,6 +201,7 @@
             <span class="lbl">Jahr</span>
             <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
             <button class="ctrl" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren" style="cursor:pointer">↓ CSV</button>
+            <button class="ctrl" onclick="exportPLPrint()" title="P&amp;L als PDF drucken / exportieren" style="cursor:pointer">↓ PDF</button>
             <button class="btn-settings" onclick="toggleSettings()" title="Einstellungen">⚙️</button>
           </div>
 
@@ -395,6 +396,11 @@
                     </thead>
                     <tbody id="txn-picker-tbody" style="background:#fff"></tbody>
                   </table>
+                </div>
+                <div id="txn-picker-pagination" style="display:none;align-items:center;justify-content:center;gap:.6rem;padding:.5rem 0;margin-bottom:.5rem">
+                  <button id="txn-page-prev" onclick="txnPickerPage(-1)" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
+                  <span id="txn-page-label" style="font-size:.75rem;color:#8b95a9;min-width:60px;text-align:center"></span>
+                  <button id="txn-page-next" onclick="txnPickerPage(+1)" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit">Weiter ›</button>
                 </div>
                 <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
                   <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">

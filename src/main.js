@@ -2,7 +2,7 @@ import './styles/main.css';
 import { loadAppState, loadKpiOrder } from './lib/storage.js';
 import { APP, resetAPP } from './state.js';
 import { setScreen, setMainView, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
-import { buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV } from './ui/pl-table.js';
+import { buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV, exportPLPrint } from './ui/pl-table.js';
 import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
 import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
@@ -13,7 +13,7 @@ import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   initOutsidePickerClose } from './ui/settings.js';
 import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
-  applyBulkReclassification, clearTransactionSelection,
+  applyBulkReclassification, clearTransactionSelection, txnPickerPage,
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
@@ -24,7 +24,7 @@ import { rebuildAcctMap } from './lib/resolve.js';
 // ── Expose globals ────────────────────────────────────────────────────
 Object.assign(window, {
   setMainView, showToast, setLoading, updateAboveTableHeight,
-  buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV,
+  buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV, exportPLPrint,
   openDrill, renderDrillTable, closeDrill,
   toggleSettings, switchSettingsTab, renderCoATree,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
@@ -34,7 +34,7 @@ Object.assign(window, {
   restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem,
   initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
-  applyBulkReclassification, clearTransactionSelection,
+  applyBulkReclassification, clearTransactionSelection, txnPickerPage,
   renderRulesList, toggleRule, deleteRule,
   handleFile, removeFile, updateSidebarBadge,
   toggleSidebar, renderFilesScreen,
@@ -421,7 +421,7 @@ window.setUserRole = setUserRole;
 
 // ── Load app data and navigate to P&L ────────────────────────────────
 async function loadAndShowApp(user) {
-  loadAppState();
+  await loadAppState();
   APP.kpiOrder = loadKpiOrder();
 
   // Update sidebar with user name

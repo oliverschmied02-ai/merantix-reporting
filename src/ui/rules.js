@@ -7,7 +7,11 @@ import { saveBulkMappings } from '../lib/db.js';
 import { buildPL } from './pl-table.js';
 import { showToast } from './screen.js';
 
+const PAGE_SIZE = 100;
+let _page = 0;
+
 export function initTransactionPicker() {
+  _page = 0;
   const subs = APP.plDef.flatMap(i => i.subs ? i.subs.map(s => ({ ...s, itemLabel: i.label, itemId: i.id })) : []);
   const select = document.getElementById('txn-bulk-target-sub');
   select.innerHTML = `<option value="">-- Kategorie wählen --</option>${subs.map(s =>
@@ -16,7 +20,8 @@ export function initTransactionPicker() {
   updateTransactionPicker();
 }
 
-export function updateTransactionPicker() {
+export function updateTransactionPicker(resetPage = true) {
+  if (resetPage) _page = 0;
   const query   = document.getElementById('txn-picker-search').value.toLowerCase().trim();
   const guvOnly = document.getElementById('txn-filter-guv')?.checked;
   let indexedAll = APP.allTransactions.map((t, i) => ({ t, i }));
@@ -35,13 +40,28 @@ export function updateTransactionPicker() {
     );
   }
 
-  const MAX = 500;
-  const truncated = indexedAll.length > MAX;
-  const visible = indexedAll.slice(0, MAX);
+  const total     = indexedAll.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  _page = Math.min(_page, totalPages - 1);
+  const start   = _page * PAGE_SIZE;
+  const visible = indexedAll.slice(start, start + PAGE_SIZE);
 
   document.getElementById('txn-picker-count').textContent =
-    `${indexedAll.length.toLocaleString('de-DE')} von ${APP.allTransactions.length.toLocaleString('de-DE')} Buchungen` +
-    (truncated ? ` (nur erste ${MAX} angezeigt — Suche verfeinern)` : '');
+    `${total.toLocaleString('de-DE')} von ${APP.allTransactions.length.toLocaleString('de-DE')} Buchungen` +
+    (total > PAGE_SIZE ? ` — Seite ${_page + 1} / ${totalPages}` : '');
+
+  // Render pagination controls
+  const paginationEl = document.getElementById('txn-picker-pagination');
+  if (paginationEl) {
+    if (totalPages > 1) {
+      paginationEl.style.display = 'flex';
+      document.getElementById('txn-page-prev').disabled  = _page === 0;
+      document.getElementById('txn-page-next').disabled  = _page >= totalPages - 1;
+      document.getElementById('txn-page-label').textContent = `${_page + 1} / ${totalPages}`;
+    } else {
+      paginationEl.style.display = 'none';
+    }
+  }
 
   const tbody = document.getElementById('txn-picker-tbody');
 
@@ -152,7 +172,12 @@ export function clearTransactionSelection() {
   APP.selectedTransactions.clear();
   document.getElementById('txn-picker-search').value = '';
   document.getElementById('txn-select-all').checked = false;
-  updateTransactionPicker();
+  updateTransactionPicker(true);
+}
+
+export function txnPickerPage(dir) {
+  _page += dir;
+  updateTransactionPicker(false);
 }
 
 export function renderRulesList() {

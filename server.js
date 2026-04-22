@@ -136,6 +136,25 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
     `,
   },
+  {
+    version: 4,
+    description: 'Add user_settings table for per-user CoA and rules persistence',
+    sql: `
+      CREATE TABLE IF NOT EXISTS user_settings (
+        user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        key        TEXT NOT NULL,
+        value      JSONB NOT NULL,
+        updated_at TIMESTAMPTZ DEFAULT NOW(),
+        PRIMARY KEY (user_id, key)
+      );
+    `,
+  },
+  {
+    version: 5,
+    description: 'Add content_hash column to gdpdu_files for duplicate detection',
+    sql: `ALTER TABLE gdpdu_files ADD COLUMN IF NOT EXISTS content_hash TEXT;
+          CREATE INDEX IF NOT EXISTS idx_gdpdu_hash ON gdpdu_files(content_hash);`,
+  },
 ];
 
 async function runMigrations() {
@@ -422,6 +441,36 @@ app.delete('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ── USER SETTINGS (CoA / Rules persistence) ──────────────────────────
+app.get('/api/settings/:key', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT value FROM user_settings WHERE user_id=$1 AND key=$2',
+    [req.user.id, req.params.key]
+  );
+  res.json(rows.length ? rows[0].value : null);
+});
+
+app.put('/api/settings/:key', requireAuth, async (req, res) => {
+  const { value } = req.body;
+  if (value === undefined) return res.status(400).json({ error: 'value required' });
+  await pool.query(
+    `INSERT INTO user_settings (user_id, key, value, updated_at)
+     VALUES ($1, $2, $3, NOW())
+     ON CONFLICT (user_id, key) DO UPDATE SET value=$3, updated_at=NOW()`,
+    [req.user.id, req.params.key, JSON.stringify(value)]
+  );
+  res.json({ ok: true });
+});
+
+// ── DATA: CHECK HASH ──────────────────────────────────────────────────
+app.get('/api/data/check-hash/:hash', requireAuth, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT id, name FROM gdpdu_files WHERE content_hash=$1',
+    [req.params.hash]
+  );
+  res.json(rows.length ? { duplicate: true, file: rows[0] } : { duplicate: false });
+});
+
 // ── DATA: LOAD ALL ────────────────────────────────────────────────────
 app.get('/api/data', requireAuth, async (req, res) => {
   try {
@@ -478,9 +527,9 @@ app.post('/api/data', requireAuth, async (req, res) => {
     await client.query('BEGIN');
 
     await client.query(
-      `INSERT INTO gdpdu_files (id, name, company_name, uploaded_by, uploaded_at, txn_count, years)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [file.id, file.name, file.companyName || null, req.user.id, file.uploadedAt, file.txnCount, JSON.stringify(file.years)]
+      `INSERT INTO gdpdu_files (id, name, company_name, uploaded_by, uploaded_at, txn_count, years, content_hash)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [file.id, file.name, file.companyName || null, req.user.id, file.uploadedAt, file.txnCount, JSON.stringify(file.years), file.contentHash || null]
     );
 
     // Batch insert transactions (500 rows per query to stay under param limits)

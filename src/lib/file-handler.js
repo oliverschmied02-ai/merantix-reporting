@@ -3,7 +3,12 @@ import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './pars
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
-import { saveFileToServer, deleteFileFromServer, clearFromServer } from './db.js';
+import { saveFileToServer, deleteFileFromServer, clearFromServer, checkContentHash } from './db.js';
+
+async function sha256hex(buffer) {
+  const hashBuf = await crypto.subtle.digest('SHA-256', buffer);
+  return Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 export function mergeTransactions(newTxns, fileId) {
   for (const t of newTxns) {
@@ -66,7 +71,19 @@ export async function handleFile(file) {
   }
   setLoading('ZIP wird entpackt…');
   try {
-    const zip = await JSZip.loadAsync(file);
+    const rawBuffer = await file.arrayBuffer();
+    const contentHash = await sha256hex(rawBuffer);
+
+    // Check for duplicate before parsing
+    const dupCheck = await checkContentHash(contentHash).catch(() => ({ duplicate: false }));
+    if (dupCheck.duplicate) {
+      const proceed = confirm(
+        `Diese Datei wurde bereits hochgeladen ("${dupCheck.file.name}").\n\nTrotzdem erneut importieren?`
+      );
+      if (!proceed) { if (APP.loadedFiles.length === 0) setScreen('upload-screen'); else setScreen('pl-screen'); return; }
+    }
+
+    const zip = await JSZip.loadAsync(rawBuffer);
     const fm = {};
     zip.forEach((p, e) => { fm[p.toLowerCase()] = e; });
 
@@ -112,6 +129,7 @@ export async function handleFile(file) {
       uploadedAt:  new Date().toISOString(),
       txnCount:    added,
       years:       fileYears,
+      contentHash,
     };
     APP.loadedFiles.push(fileRecord);
 

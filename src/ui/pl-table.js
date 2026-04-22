@@ -281,3 +281,112 @@ export function exportPLCSV() {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export function exportPLPrint() {
+  if (!APP.plData) return;
+  const { periodPLs, ytdPL, periods, year } = APP.plData;
+
+  function fmtN(v) {
+    if (v === 0 || v == null) return '—';
+    return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(v);
+  }
+  function sign(v, nb, isMixed) {
+    if (v === 0) return '';
+    if (!isMixed && nb === 'S' && v > 0) return '− ';
+    return '';
+  }
+
+  const companyName = APP.loadedFiles.map(f => f.companyName).filter(Boolean).join(', ') || '';
+  const exportDate  = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const thCols = periods.map(p => `<th>${esc(p.label)}</th>`).join('') + `<th class="ytd">YTD ${year}</th>`;
+
+  function buildRows() {
+    const out = [];
+    for (const item of APP.plDef) {
+      if (item.type === 'computed' || item.type === 'ratio') {
+        const v_arr = periodPLs.map(pl => pl.computed[item.id] ?? 0);
+        const vYTD  = ytdPL.computed[item.id] ?? 0;
+        const isRatio = item.type === 'ratio';
+        const fmt = v => isRatio
+          ? (v == null ? '—' : v.toFixed(1) + ' %')
+          : fmtN(v);
+        out.push(`<tr class="row-computed ${isRatio ? 'row-ratio' : ''}">
+          <td class="pos">${esc(item.label)}</td>
+          ${v_arr.map(v => `<td class="num">${fmt(v)}</td>`).join('')}
+          <td class="num ytd">${fmt(vYTD)}</td>
+        </tr><tr class="sep"><td colspan="${periods.length + 2}"></td></tr>`);
+        continue;
+      }
+      const nb      = item.normalBalance || 'S';
+      const isMixed = item.type === 'section_mixed';
+      const v_arr   = periodPLs.map(pl => isMixed ? pl.computed[item.id] || 0 : pl.vals[item.id]?.amount || 0);
+      const vYTD    = isMixed ? ytdPL.computed[item.id] || 0 : ytdPL.vals[item.id]?.amount || 0;
+      out.push(`<tr class="row-section">
+        <td class="pos">${esc(item.label)}</td>
+        ${v_arr.map(v => `<td class="num">${v === 0 ? '—' : sign(v, nb, isMixed) + fmtN(Math.abs(v))}</td>`).join('')}
+        <td class="num ytd">${vYTD === 0 ? '—' : sign(vYTD, nb, isMixed) + fmtN(Math.abs(vYTD))}</td>
+      </tr>`);
+      for (const sub of item.subs) {
+        const sv_arr = periodPLs.map(pl => pl.vals[item.id]?.bySubId[sub.id]?.amount || 0);
+        const svYTD  = ytdPL.vals[item.id]?.bySubId[sub.id]?.amount || 0;
+        if (sv_arr.every(v => v === 0) && svYTD === 0) continue;
+        const snb = sub.normalBalance || nb;
+        out.push(`<tr class="row-sub">
+          <td class="pos sub-indent">${esc(sub.label)}</td>
+          ${sv_arr.map(v => `<td class="num">${v === 0 ? '—' : sign(v, snb, false) + fmtN(Math.abs(v))}</td>`).join('')}
+          <td class="num ytd">${svYTD === 0 ? '—' : sign(svYTD, snb, false) + fmtN(Math.abs(svYTD))}</td>
+        </tr>`);
+      }
+    }
+    return out.join('');
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>P&amp;L ${year}${companyName ? ' · ' + companyName : ''}</title>
+<style>
+  @page { size: A4 landscape; margin: 15mm 12mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 8pt; color: #1e2433; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8mm; }
+  .header h1 { font-size: 13pt; font-weight: 700; }
+  .header .meta { font-size: 7pt; color: #6b7280; text-align: right; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e2433; color: #fff; font-size: 7pt; font-weight: 600; text-align: right; padding: 3px 5px; white-space: nowrap; }
+  th:first-child { text-align: left; }
+  td { padding: 2px 5px; border-bottom: 1px solid #f0f2f8; vertical-align: middle; }
+  td.pos { text-align: left; font-size: 7.5pt; }
+  td.num { text-align: right; font-size: 7.5pt; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  td.ytd { background: #f4f6fb; font-weight: 600; }
+  th.ytd { background: #2d3a5a; }
+  .sub-indent { padding-left: 14px; color: #4b5563; font-size: 7pt; }
+  .row-section td { font-weight: 600; background: #f8f9fd; }
+  .row-computed td { font-weight: 700; background: #eef1ff; color: #1e2433; }
+  .row-ratio td { font-style: italic; color: #4f6ef7; font-weight: 600; }
+  .sep td { padding: 0; border: none; height: 3px; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Gewinn- und Verlustrechnung ${year}</h1>
+    ${companyName ? `<div style="font-size:9pt;color:#4b5563;margin-top:2px">${esc(companyName)}</div>` : ''}
+  </div>
+  <div class="meta">Exportiert am ${exportDate}<br>Alle Beträge in EUR</div>
+</div>
+<table>
+  <thead><tr><th style="text-align:left;min-width:160px">Position</th>${thCols}</tr></thead>
+  <tbody>${buildRows()}</tbody>
+</table>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=1100,height=750');
+  w.document.write(html);
+  w.document.close();
+  w.onload = () => w.print();
+}

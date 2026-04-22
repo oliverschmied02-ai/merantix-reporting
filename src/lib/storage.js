@@ -2,35 +2,60 @@ import { APP } from '../state.js';
 import { DEFAULT_PL_DEF } from '../data/default-pl.js';
 import { deepClone } from './utils.js';
 import { rebuildAcctMap } from './resolve.js';
+import { getSetting, saveSetting } from './db.js';
 
-export function loadAppState() {
+// Persist to server (fire-and-forget) + keep localStorage as offline cache
+function persistSetting(key, value) {
+  localStorage.setItem(key, JSON.stringify(value));
+  saveSetting(key, value).catch(() => {}); // best-effort
+}
+
+export async function loadAppState() {
+  // Try server first; fall back to localStorage, then hardcoded defaults
   try {
-    const coa = localStorage.getItem('gdpdu_coa_v1');
-    if (coa) APP.plDef = JSON.parse(coa);
-    else APP.plDef = deepClone(DEFAULT_PL_DEF);
+    const [serverCoA, serverRules] = await Promise.all([
+      getSetting('gdpdu_coa_v1'),
+      getSetting('gdpdu_rules_v1'),
+    ]);
+
+    if (serverCoA) {
+      APP.plDef = serverCoA;
+      localStorage.setItem('gdpdu_coa_v1', JSON.stringify(serverCoA));
+    } else {
+      const local = localStorage.getItem('gdpdu_coa_v1');
+      APP.plDef = local ? JSON.parse(local) : deepClone(DEFAULT_PL_DEF);
+    }
+
+    if (serverRules) {
+      APP.rules = serverRules;
+      localStorage.setItem('gdpdu_rules_v1', JSON.stringify(serverRules));
+    } else {
+      const local = localStorage.getItem('gdpdu_rules_v1');
+      APP.rules = local ? JSON.parse(local) : [];
+    }
   } catch {
-    APP.plDef = deepClone(DEFAULT_PL_DEF);
-  }
-  try {
-    const rules = localStorage.getItem('gdpdu_rules_v1');
-    if (rules) APP.rules = JSON.parse(rules);
-    else APP.rules = [];
-  } catch {
-    APP.rules = [];
+    // Server unreachable — use localStorage fallback
+    try {
+      const coa = localStorage.getItem('gdpdu_coa_v1');
+      APP.plDef = coa ? JSON.parse(coa) : deepClone(DEFAULT_PL_DEF);
+    } catch { APP.plDef = deepClone(DEFAULT_PL_DEF); }
+    try {
+      const rules = localStorage.getItem('gdpdu_rules_v1');
+      APP.rules = rules ? JSON.parse(rules) : [];
+    } catch { APP.rules = []; }
   }
   rebuildAcctMap();
 }
 
 export function saveCoA() {
-  localStorage.setItem('gdpdu_coa_v1', JSON.stringify(APP.plDef));
+  persistSetting('gdpdu_coa_v1', APP.plDef);
   rebuildAcctMap();
-  // imported lazily to avoid circular deps
   import('../ui/pl-table.js').then(m => m.buildPL());
   import('../ui/settings.js').then(m => m.renderCoATree());
 }
 
 export function saveRules() {
-  localStorage.setItem('gdpdu_rules_v1', JSON.stringify(APP.rules));
+  persistSetting('gdpdu_rules_v1', APP.rules);
   import('../ui/pl-table.js').then(m => m.buildPL());
 }
 

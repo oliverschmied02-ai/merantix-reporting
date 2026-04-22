@@ -158,3 +158,23 @@ export async function deleteUser(id) {
   const res = await apiFetch(`/api/users/${id}`, { method: 'DELETE' });
   if (!res.ok) throw new Error((await res.json()).error);
 }
+
+export async function getSetting(key) {
+  const res = await apiFetch(`/api/settings/${encodeURIComponent(key)}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function saveSetting(key, value) {
+  await apiFetch(`/api/settings/${encodeURIComponent(key)}`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ value }),
+  });
+}
+
+export async function checkContentHash(hash) {
+  const res = await apiFetch(`/api/data/check-hash/${encodeURIComponent(hash)}`);
+  if (!res.ok) return { duplicate: false };
+  return res.json();
+}
