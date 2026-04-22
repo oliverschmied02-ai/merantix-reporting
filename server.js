@@ -39,7 +39,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc:     ["'self'"],
-      scriptSrc:      ["'self'"],
+      scriptSrc:      ["'self'", "'unsafe-inline'"], // onclick handlers used throughout; refactor to event delegation to remove this
       styleSrc:       ["'self'", "'unsafe-inline'"], // inline styles used throughout
       imgSrc:         ["'self'", 'data:'],
       fontSrc:        ["'self'"],

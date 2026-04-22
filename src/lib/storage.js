@@ -4,47 +4,61 @@ import { deepClone } from './utils.js';
 import { rebuildAcctMap } from './resolve.js';
 import { getSetting, saveSetting } from './db.js';
 
-// Persist to server (fire-and-forget) + keep localStorage as offline cache
 function persistSetting(key, value) {
   localStorage.setItem(key, JSON.stringify(value));
-  saveSetting(key, value).catch(() => {}); // best-effort
+  saveSetting(key, value).catch(() => {}); // best-effort, non-blocking
 }
 
-export async function loadAppState() {
-  // Try server first; fall back to localStorage, then hardcoded defaults
+// Load from localStorage synchronously (instant), then sync server settings in background.
+// The background sync updates APP state and re-renders if the server has newer data.
+export function loadAppState() {
   try {
-    const [serverCoA, serverRules] = await Promise.all([
-      getSetting('gdpdu_coa_v1'),
-      getSetting('gdpdu_rules_v1'),
-    ]);
-
-    if (serverCoA) {
-      APP.plDef = serverCoA;
-      localStorage.setItem('gdpdu_coa_v1', JSON.stringify(serverCoA));
-    } else {
-      const local = localStorage.getItem('gdpdu_coa_v1');
-      APP.plDef = local ? JSON.parse(local) : deepClone(DEFAULT_PL_DEF);
-    }
-
-    if (serverRules) {
-      APP.rules = serverRules;
-      localStorage.setItem('gdpdu_rules_v1', JSON.stringify(serverRules));
-    } else {
-      const local = localStorage.getItem('gdpdu_rules_v1');
-      APP.rules = local ? JSON.parse(local) : [];
-    }
-  } catch {
-    // Server unreachable — use localStorage fallback
-    try {
-      const coa = localStorage.getItem('gdpdu_coa_v1');
-      APP.plDef = coa ? JSON.parse(coa) : deepClone(DEFAULT_PL_DEF);
-    } catch { APP.plDef = deepClone(DEFAULT_PL_DEF); }
-    try {
-      const rules = localStorage.getItem('gdpdu_rules_v1');
-      APP.rules = rules ? JSON.parse(rules) : [];
-    } catch { APP.rules = []; }
-  }
+    const coa = localStorage.getItem('gdpdu_coa_v1');
+    APP.plDef = coa ? JSON.parse(coa) : deepClone(DEFAULT_PL_DEF);
+  } catch { APP.plDef = deepClone(DEFAULT_PL_DEF); }
+  try {
+    const rules = localStorage.getItem('gdpdu_rules_v1');
+    APP.rules = rules ? JSON.parse(rules) : [];
+  } catch { APP.rules = []; }
   rebuildAcctMap();
+
+  // Background sync: pull server settings and re-render only if they differ
+  syncSettingsFromServer().catch(() => {});
+}
+
+async function syncSettingsFromServer() {
+  const [serverCoA, serverRules] = await Promise.all([
+    getSetting('gdpdu_coa_v1'),
+    getSetting('gdpdu_rules_v1'),
+  ]);
+
+  let changed = false;
+
+  if (serverCoA) {
+    const current = JSON.stringify(APP.plDef);
+    const incoming = JSON.stringify(serverCoA);
+    if (current !== incoming) {
+      APP.plDef = serverCoA;
+      localStorage.setItem('gdpdu_coa_v1', incoming);
+      changed = true;
+    }
+  }
+
+  if (serverRules) {
+    const current = JSON.stringify(APP.rules);
+    const incoming = JSON.stringify(serverRules);
+    if (current !== incoming) {
+      APP.rules = serverRules;
+      localStorage.setItem('gdpdu_rules_v1', incoming);
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    rebuildAcctMap();
+    import('../ui/pl-table.js').then(m => m.buildPL());
+    import('../ui/settings.js').then(m => m.renderCoATree());
+  }
 }
 
 export function saveCoA() {

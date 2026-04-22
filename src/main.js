@@ -421,7 +421,7 @@ window.setUserRole = setUserRole;
 
 // ── Load app data and navigate to P&L ────────────────────────────────
 async function loadAndShowApp(user) {
-  await loadAppState();
+  loadAppState();
   APP.kpiOrder = loadKpiOrder();
 
   // Update sidebar with user name
