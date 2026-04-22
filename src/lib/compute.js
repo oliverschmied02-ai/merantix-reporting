@@ -55,20 +55,28 @@ export function computePLSingle(txns) {
   }
 
   const computed = {};
+  const visiting = new Set();
   function getVal(id) {
     if (computed[id] !== undefined) return computed[id];
+    if (visiting.has(id)) {
+      console.warn(`[compute] Circular formula reference detected: ${id}`);
+      return 0;
+    }
     const item = APP.plDef.find(x => x.id === id);
     if (!item) return 0;
+    visiting.add(id);
     if (item.type === 'computed') {
       let v = 0;
       for (const [dep, sign] of item.formula) v += getVal(dep) * sign;
       computed[id] = v;
+      visiting.delete(id);
       return v;
     }
     if (item.type === 'ratio') {
       const num = getVal(item.numerator);
       const den = getVal(item.denominator);
       computed[id] = den !== 0 ? (num / Math.abs(den)) * 100 : null;
+      visiting.delete(id);
       return computed[id];
     }
     if (item.type === 'section_mixed') {
@@ -78,10 +86,12 @@ export function computePLSingle(txns) {
         v += sub.normalBalance === 'H' ? sa : -sa;
       }
       computed[id] = v;
+      visiting.delete(id);
       return v;
     }
     const raw = vals[id]?.amount || 0;
     computed[id] = raw;
+    visiting.delete(id);
     return raw;
   }
   for (const item of APP.plDef) getVal(item.id);

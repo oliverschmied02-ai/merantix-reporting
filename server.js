@@ -7,13 +7,19 @@ import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
+import pino from 'pino';
+
+const log = pino({
+  level: process.env.LOG_LEVEL || 'info',
+  ...(process.env.NODE_ENV !== 'production' ? { transport: { target: 'pino-pretty' } } : {}),
+});
 
 const { Pool } = pg;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app  = express();
 const PORT = process.env.PORT || 3000;
 if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set.');
+  log.fatal('JWT_SECRET environment variable is not set');
   process.exit(1);
 }
 const JWT_SECRET = process.env.JWT_SECRET;
@@ -24,7 +30,7 @@ function buildSslConfig() {
     return { rejectUnauthorized: true, ca: process.env.DATABASE_SSL_CA };
   }
   if (process.env.DATABASE_SSL_REJECT_UNAUTHORIZED === 'false') {
-    console.warn('WARNING: DATABASE_SSL_REJECT_UNAUTHORIZED=false — TLS certificate validation is disabled.');
+    log.warn('DATABASE_SSL_REJECT_UNAUTHORIZED=false — TLS certificate validation is disabled');
     return { rejectUnauthorized: false };
   }
   return { rejectUnauthorized: true };
@@ -47,6 +53,15 @@ app.use(helmet({
 app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'dist')));
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    if (req.path.startsWith('/api') || req.path === '/health') {
+      log.info({ method: req.method, path: req.path, status: res.statusCode, ms: Date.now() - start });
+    }
+  });
+  next();
+});
 
 // ── DB MIGRATIONS ─────────────────────────────────────────────────────
 // Each migration runs exactly once, tracked by version number in schema_migrations.
@@ -171,7 +186,7 @@ async function runMigrations() {
         [m.version, m.description]
       );
       await client.query('COMMIT');
-      console.log(`✓ Migration ${m.version}: ${m.description}`);
+      log.info({ migration: m.version }, `Migration applied: ${m.description}`);
     } catch (e) {
       await client.query('ROLLBACK');
       throw new Error(`Migration ${m.version} failed: ${e.message}`);
@@ -192,7 +207,7 @@ async function initDB() {
       'INSERT INTO users (email, name, password_hash, role) VALUES ($1, $2, $3, $4)',
       [process.env.ADMIN_EMAIL, process.env.ADMIN_NAME || 'Admin', hash, 'admin']
     );
-    console.log(`✓ Created admin: ${process.env.ADMIN_EMAIL}`);
+    log.info({ email: process.env.ADMIN_EMAIL }, 'Initial admin user created');
   }
 }
 
@@ -221,7 +236,7 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-const MIN_PASSWORD_LENGTH = 6;
+const MIN_PASSWORD_LENGTH = 12;
 function validatePassword(password) {
   if (!password || password.length < MIN_PASSWORD_LENGTH)
     return `Passwort zu kurz (min. ${MIN_PASSWORD_LENGTH} Zeichen)`;
@@ -239,8 +254,19 @@ function logAudit(userId, action, detail, req) {
   pool.query(
     'INSERT INTO audit_log (user_id, action, detail, ip) VALUES ($1, $2, $3, $4)',
     [userId ?? null, action, detail ?? null, ip]
-  ).catch(err => console.error('Audit log error:', err.message));
+  ).catch(err => log.error({ err: err.message }, 'Audit log write failed'));
 }
+
+// ── HEALTH ────────────────────────────────────────────────────────────
+app.get('/health', async (req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ status: 'ok', db: 'ok', uptime: Math.floor(process.uptime()) });
+  } catch (e) {
+    log.error({ err: e.message }, 'Health check DB failure');
+    res.status(503).json({ status: 'error', db: 'unavailable', uptime: Math.floor(process.uptime()) });
+  }
+});
 
 // ── AUTH ROUTES ───────────────────────────────────────────────────────
 // Authenticated API limiter: 300 req/min per user, applied after requireAuth sets req.user.
@@ -616,5 +642,5 @@ app.get('/{*path}', (req, res) => {
 });
 
 initDB()
-  .then(() => app.listen(PORT, '0.0.0.0', () => console.log(`✓ Running on port ${PORT}`)))
-  .catch(e => { console.error('DB init failed:', e); process.exit(1); });
+  .then(() => app.listen(PORT, '0.0.0.0', () => log.info({ port: PORT }, 'Server started')))
+  .catch(e => { log.fatal({ err: e.message }, 'DB init failed'); process.exit(1); });
