@@ -200,8 +200,14 @@
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
             <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
-            <button class="ctrl" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren" style="cursor:pointer">↓ CSV</button>
-            <button class="ctrl" onclick="exportPLPrint()" title="P&amp;L als PDF drucken / exportieren" style="cursor:pointer">↓ PDF</button>
+            <button class="btn-export" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              CSV
+            </button>
+            <button class="btn-export" onclick="exportPLPrint()" title="P&amp;L als PDF exportieren">
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              PDF
+            </button>
             <button class="btn-settings" onclick="toggleSettings()" title="Einstellungen">⚙️</button>
           </div>
 

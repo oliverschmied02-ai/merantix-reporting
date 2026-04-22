@@ -117,6 +117,17 @@ select.ctrl:focus { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 3px 
 }
 .btn-settings:hover { border-color: #4f6ef7; color: #4f6ef7; background: #f5f7ff; }
 
+.btn-export {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .3rem .75rem; border-radius: 8px; font-size: .73rem;
+  font-weight: 600; cursor: pointer; font-family: inherit;
+  border: 1px solid #d6dff5; background: #fff; color: #4f6ef7;
+  transition: all .15s; box-shadow: 0 1px 3px rgba(0,0,0,.05);
+  white-space: nowrap;
+}
+.btn-export:hover { background: #4f6ef7; color: #fff; border-color: #4f6ef7; box-shadow: 0 2px 8px rgba(79,110,247,.25); }
+.btn-export svg { flex-shrink: 0; }
+
 /* ── KPI bar ── */
 .pl-summary { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
 .kpi {
