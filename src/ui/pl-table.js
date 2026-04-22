@@ -6,13 +6,25 @@ import { renderKpiBar } from './kpi-bar.js';
 import { loadKpiOrder } from '../lib/storage.js';
 
 export function buildPL() {
-  const data = computeAllPeriods();
+  let data;
+  try {
+    data = computeAllPeriods();
+  } catch (e) {
+    console.error('[buildPL] computeAllPeriods threw:', e);
+    const tbody = document.getElementById('pl-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="20" style="padding:2rem;color:#dc2626;text-align:center;font-size:.85rem">
+      Fehler beim Berechnen der GuV: ${e.message}<br>
+      <small style="color:#8b95a9">Bitte Seite neu laden oder Support kontaktieren.</small>
+    </td></tr>`;
+    return;
+  }
   if (!data) return;
   APP.plData = data;
 
   const { periodPLs, ytdPL, periods, year, mode } = data;
   const numP = periods.length;
 
+  try {
   // Load saved KPI order before rendering
   APP.kpiOrder = loadKpiOrder();
   renderKpiBar(ytdPL);
@@ -213,6 +225,14 @@ export function buildPL() {
       return `<span class="unmapped-tag" title="${esc(n)}">${a}${n ? ' · ' + esc(n.slice(0, 30)) : ''}</span>`;
     }).join('');
   } else ud.classList.add('hidden');
+  } catch (e) {
+    console.error('[buildPL] render threw:', e);
+    const tbody = document.getElementById('pl-tbody');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="20" style="padding:2rem;color:#dc2626;text-align:center;font-size:.85rem">
+      Fehler beim Rendern der GuV: ${e.message}<br>
+      <small style="color:#8b95a9">Bitte Seite neu laden oder Support kontaktieren.</small>
+    </td></tr>`;
+  }
 }
 
 export function toggleSection(id) {

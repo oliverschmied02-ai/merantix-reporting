@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { checkAuth, login, logout, loadFromServer, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest } from './lib/db.js';
+import { checkAuth, login, logout, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
@@ -46,6 +46,7 @@ Object.assign(window, {
   openChangePassword, closeChangePassword, submitChangePassword,
   setUserRole,
   renderDataStats,
+  changeYear, renderAuditLog, auditPage,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────
@@ -323,6 +324,65 @@ async function copyTempPassword() {
 window.closeTempPwModal = closeTempPwModal;
 window.copyTempPassword = copyTempPassword;
 
+// ── Year lazy-load ────────────────────────────────────────────────────
+export async function changeYear() {
+  const year = parseInt(document.getElementById('year-sel').value);
+  if (!year) { buildPL(); return; }
+  if (!APP.loadedYears.has(year)) {
+    try {
+      const data = await loadTransactionsForYear(year);
+      // Remove any stale transactions for this year (shouldn't exist, but be safe)
+      APP.allTransactions = APP.allTransactions.filter(t => t.wjYear !== year);
+      APP.allTransactions.push(...data);
+      APP.loadedYears.add(year);
+    } catch (e) {
+      showToast('Fehler beim Laden des Jahres ' + year + ': ' + e.message);
+    }
+  }
+  buildPL();
+}
+window.changeYear = changeYear;
+
+// ── Audit log ─────────────────────────────────────────────────────────
+let _auditOffset = 0;
+const _auditLimit = 50;
+
+export async function renderAuditLog(reset = true) {
+  const container = document.getElementById('audit-log-body');
+  const countEl   = document.getElementById('audit-total');
+  const prevBtn   = document.getElementById('audit-prev');
+  const nextBtn   = document.getElementById('audit-next');
+  if (!container) return;
+  if (reset) _auditOffset = 0;
+  try {
+    const { rows, total } = await getAuditLog(_auditLimit, _auditOffset);
+    if (countEl) countEl.textContent = `${_auditOffset + 1}–${Math.min(_auditOffset + rows.length, total)} von ${total}`;
+    if (prevBtn) prevBtn.disabled = _auditOffset === 0;
+    if (nextBtn) nextBtn.disabled = _auditOffset + rows.length >= total;
+    container.innerHTML = rows.length === 0
+      ? '<tr><td colspan="5" style="padding:1.5rem;text-align:center;color:#8b95a9">Keine Einträge</td></tr>'
+      : rows.map(r => {
+          const ts = new Date(r.created_at).toLocaleString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+          return `<tr style="border-bottom:1px solid #f0f2f8">
+            <td style="padding:.4rem .6rem;font-size:.72rem;color:#4b5563;white-space:nowrap">${esc(ts)}</td>
+            <td style="padding:.4rem .6rem;font-size:.72rem;font-weight:600;color:#1e2433">${esc(r.user_name || '—')}</td>
+            <td style="padding:.4rem .6rem;font-size:.72rem;color:#4b5563">${esc(r.user_email || '—')}</td>
+            <td style="padding:.4rem .6rem;font-size:.72rem;font-family:monospace;color:#4f6ef7">${esc(r.action)}</td>
+            <td style="padding:.4rem .6rem;font-size:.72rem;color:#6b7280">${esc(r.detail || '')}</td>
+          </tr>`;
+        }).join('');
+  } catch (e) {
+    container.innerHTML = `<tr><td colspan="5" style="padding:1rem;color:#dc2626;font-size:.75rem">Fehler: ${esc(e.message)}</td></tr>`;
+  }
+}
+window.renderAuditLog = renderAuditLog;
+
+function auditPage(dir) {
+  _auditOffset = Math.max(0, _auditOffset + dir * _auditLimit);
+  renderAuditLog(false);
+}
+window.auditPage = auditPage;
+
 // ── Reset ─────────────────────────────────────────────────────────────
 function resetAll() {
   clearFromServer().catch(() => {});
@@ -394,7 +454,7 @@ async function submitChangePassword() {
   const btn    = document.getElementById('cp-btn');
   errEl.classList.add('hidden');
   if (newPw !== conf) { errEl.textContent = 'Passwörter stimmen nicht überein.'; errEl.classList.remove('hidden'); return; }
-  if (newPw.length < 6) { errEl.textContent = 'Passwort muss mindestens 6 Zeichen haben.'; errEl.classList.remove('hidden'); return; }
+  if (newPw.length < 12) { errEl.textContent = 'Passwort muss mindestens 12 Zeichen haben.'; errEl.classList.remove('hidden'); return; }
   btn.disabled = true; btn.textContent = '…';
   try {
     await changeMyPassword(newPw);
@@ -431,11 +491,22 @@ async function loadAndShowApp(user) {
   applyRole(user);
 
   try {
-    const saved = await loadFromServer();
-    if (saved && saved.transactions.length > 0) {
-      APP.allTransactions = saved.transactions;
-      APP.loadedFiles     = saved.loadedFiles;
-      APP.accountNames    = saved.accountNames;
+    // Load metadata to discover available years, then fetch only the latest year's transactions.
+    const meta = await loadFromServer();
+    if (meta && meta.loadedFiles.length > 0) {
+      APP.loadedFiles  = meta.loadedFiles;
+      APP.accountNames = meta.accountNames;
+      // Derive all years from file metadata
+      const allYears = [...new Set(meta.loadedFiles.flatMap(f => f.years || []))].sort();
+      APP.years = allYears;
+      const latestYear = allYears[allYears.length - 1];
+      if (latestYear) {
+        const yearData = await loadFromServer(latestYear);
+        APP.allTransactions = yearData?.transactions || [];
+        APP.loadedYears.add(latestYear);
+      } else {
+        APP.allTransactions = meta.transactions || [];
+      }
       rebuildAcctMap();
       updateSidebarBadge();
       refreshYears();

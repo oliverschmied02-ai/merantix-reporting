@@ -29,8 +29,9 @@ export async function checkAuth() {
   return data.user;
 }
 
-export async function loadFromServer() {
-  const res = await apiFetch('/api/data');
+export async function loadFromServer(year) {
+  const url = year ? `/api/data?year=${encodeURIComponent(year)}` : '/api/data';
+  const res = await apiFetch(url);
   if (!res.ok) throw new Error('Load failed: ' + res.status);
   const data = await res.json();
   if (!data) return null;
@@ -39,6 +40,20 @@ export async function loadFromServer() {
     transactions: data.transactions.map(t => ({ ...t, datum: t.datum ? new Date(t.datum) : null })),
     accountNames: new Map(data.accountNames),
   };
+}
+
+export async function loadTransactionsForYear(year) {
+  const res = await apiFetch(`/api/data?year=${encodeURIComponent(year)}`);
+  if (!res.ok) throw new Error('Load failed: ' + res.status);
+  const data = await res.json();
+  if (!data) return [];
+  return data.transactions.map(t => ({ ...t, datum: t.datum ? new Date(t.datum) : null }));
+}
+
+export async function getAuditLog(limit = 100, offset = 0) {
+  const res = await apiFetch(`/api/audit?limit=${limit}&offset=${offset}`);
+  if (!res.ok) throw new Error('Audit log load failed');
+  return res.json();
 }
 
 export async function saveFileToServer(file, transactions, accountNames) {

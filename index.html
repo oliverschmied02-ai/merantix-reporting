@@ -199,7 +199,7 @@
             </div>
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
-            <select class="ctrl" id="year-sel" onchange="buildPL()"></select>
+            <select class="ctrl" id="year-sel" onchange="changeYear()"></select>
             <button class="btn-export" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               CSV
@@ -303,6 +303,9 @@
             </button>
             <button class="sm-tab" data-tab="data" onclick="switchSettingsTab('data')">
               <span class="sm-tab-icon">🗄</span> Daten
+            </button>
+            <button class="sm-tab" data-tab="audit" onclick="switchSettingsTab('audit')">
+              <span class="sm-tab-icon">📋</span> Aktivitätslog
             </button>
           </nav>
           <div class="sm-sidebar-footer">
@@ -440,6 +443,32 @@
                   </div>
                   <button onclick="resetAll()" class="sm-danger-btn">Alle Daten löschen</button>
                 </div>
+              </div>
+            </div>
+
+            <!-- ── Audit Log Tab ── -->
+            <div id="sm-audit-tab" class="sm-tab-content hidden">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+                <div style="font-size:.82rem;font-weight:700;color:#1e2433">Aktivitätslog</div>
+                <span id="audit-total" style="font-size:.72rem;color:#8b95a9"></span>
+              </div>
+              <div style="overflow-x:auto;border:1px solid #e4e9f5;border-radius:8px">
+                <table style="width:100%;border-collapse:collapse;font-size:.72rem">
+                  <thead>
+                    <tr style="background:#f4f6fb;border-bottom:1px solid #e4e9f5">
+                      <th style="padding:.45rem .6rem;text-align:left;color:#8b95a9;font-weight:700;white-space:nowrap">Zeit</th>
+                      <th style="padding:.45rem .6rem;text-align:left;color:#8b95a9;font-weight:700">Name</th>
+                      <th style="padding:.45rem .6rem;text-align:left;color:#8b95a9;font-weight:700">E-Mail</th>
+                      <th style="padding:.45rem .6rem;text-align:left;color:#8b95a9;font-weight:700">Aktion</th>
+                      <th style="padding:.45rem .6rem;text-align:left;color:#8b95a9;font-weight:700">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody id="audit-log-body"></tbody>
+                </table>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
+                <button id="audit-prev" onclick="auditPage(-1)" style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
+                <button id="audit-next" onclick="auditPage(1)"  style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">Weiter ›</button>
               </div>
             </div>
 

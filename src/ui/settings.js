@@ -14,6 +14,7 @@ const SM_TAB_TITLES = {
   coa:      'Kontenplan',
   rules:    'Buchungsregeln',
   data:     'Daten & Verwaltung',
+  audit:    'Aktivitätslog',
 };
 
 export function toggleSettings(show) {
@@ -35,6 +36,7 @@ export function switchSettingsTab(tab) {
   if (tab === 'rules') initTransactionPicker();
   if (tab === 'coa') renderCoATree();
   if (tab === 'data') renderDataStats();
+  if (tab === 'audit' && window.renderAuditLog) window.renderAuditLog();
 }
 
 // Track open account picker

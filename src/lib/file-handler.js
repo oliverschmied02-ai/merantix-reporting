@@ -132,6 +132,8 @@ export async function handleFile(file) {
       contentHash,
     };
     APP.loadedFiles.push(fileRecord);
+    // Mark these years as loaded (transactions are in memory from the parse)
+    for (const y of fileYears) APP.loadedYears.add(y);
 
     // Save to PostgreSQL
     setLoading('Daten werden gespeichert…');

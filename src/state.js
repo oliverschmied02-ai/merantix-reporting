@@ -12,6 +12,7 @@ export const APP = {
   selectedTransactions: new Set(),
   viewMode: 'monat',
   years: [],
+  loadedYears: new Set(), // tracks which fiscal years have been fetched
   companyName: '',
   plDef: deepClone(DEFAULT_PL_DEF),
   acctMap: new Map(),
@@ -31,6 +32,7 @@ export function resetAPP() {
   APP.selectedTransactions = new Set();
   APP.viewMode = 'monat';
   APP.years = [];
+  APP.loadedYears = new Set();
   APP.companyName = '';
   APP.plDef = deepClone(DEFAULT_PL_DEF);
   APP.acctMap = new Map();

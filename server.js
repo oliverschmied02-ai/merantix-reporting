@@ -489,7 +489,7 @@ app.get('/api/data/check-hash/:hash', requireAuth, async (req, res) => {
   res.json(rows.length ? { duplicate: true, file: rows[0] } : { duplicate: false });
 });
 
-// ── DATA: LOAD ALL ────────────────────────────────────────────────────
+// ── DATA: LOAD ALL (metadata + account names only; transactions loaded per-year) ──
 app.get('/api/data', requireAuth, async (req, res) => {
   try {
     const files = await pool.query(
@@ -497,12 +497,24 @@ app.get('/api/data', requireAuth, async (req, res) => {
     );
     if (files.rows.length === 0) return res.json(null);
 
-    const txns   = await pool.query(`
-      SELECT t.*, dm.item_id AS dm_item_id, dm.sub_id AS dm_sub_id
-      FROM transactions t
-      LEFT JOIN direct_mappings dm ON dm.txn_id = t.id
-      ORDER BY t.id
-    `);
+    // If a specific year is requested, return transactions for that year only
+    const year = req.query.year ? parseInt(req.query.year) : null;
+    let txnsQuery, txnsParams;
+    if (year) {
+      txnsQuery  = `SELECT t.*, dm.item_id AS dm_item_id, dm.sub_id AS dm_sub_id
+                    FROM transactions t
+                    LEFT JOIN direct_mappings dm ON dm.txn_id = t.id
+                    WHERE t.wj_year = $1
+                    ORDER BY t.id`;
+      txnsParams = [year];
+    } else {
+      txnsQuery  = `SELECT t.*, dm.item_id AS dm_item_id, dm.sub_id AS dm_sub_id
+                    FROM transactions t
+                    LEFT JOIN direct_mappings dm ON dm.txn_id = t.id
+                    ORDER BY t.id`;
+      txnsParams = [];
+    }
+    const txns   = await pool.query(txnsQuery, txnsParams);
     const accts  = await pool.query('SELECT * FROM account_names');
 
     res.json({
@@ -634,6 +646,27 @@ app.delete('/api/mappings', requireAuth, async (req, res) => {
     await pool.query('DELETE FROM direct_mappings');
   }
   res.json({ ok: true });
+});
+
+// ── AUDIT LOG ─────────────────────────────────────────────────────────
+app.get('/api/audit', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const limit  = Math.min(parseInt(req.query.limit)  || 100, 500);
+    const offset = Math.max(parseInt(req.query.offset) || 0,   0);
+    const { rows } = await pool.query(
+      `SELECT al.id, al.action, al.detail, al.ip, al.created_at,
+              u.name AS user_name, u.email AS user_email
+       FROM audit_log al
+       LEFT JOIN users u ON u.id = al.user_id
+       ORDER BY al.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [limit, offset]
+    );
+    const { rows: countRows } = await pool.query('SELECT COUNT(*) FROM audit_log');
+    res.json({ rows, total: parseInt(countRows[0].count) });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────
