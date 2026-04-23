@@ -24,7 +24,9 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
   planLockVersion, planDeleteVersion,
-  openCompareScreen, runComparison } from './ui/plan.js';
+  openCompareScreen, runComparison,
+  openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
+  submitDriver, driverGenerate, driverDelete, driverEdit } from './ui/plan.js';
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
@@ -68,6 +70,9 @@ Object.assign(window, {
   planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
   planLockVersion, planDeleteVersion,
   openCompareScreen, runComparison,
+  // Revenue drivers
+  openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
+  submitDriver, driverGenerate, driverDelete, driverEdit,
   // Actuals vs Plan
   avpChangeYear, avpChangeVersion, avpChangeMonth,
 });

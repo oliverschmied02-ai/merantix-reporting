@@ -427,6 +427,20 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_palloc_target ON plan_allocation_results(target_id);
     `,
   },
+  {
+    version: 12,
+    description: 'management_fee driver type: commitment + fee_pct columns, extend CHECK constraint',
+    sql: `
+      ALTER TABLE plan_revenue_drivers
+        DROP CONSTRAINT IF EXISTS plan_revenue_drivers_driver_type_check;
+      ALTER TABLE plan_revenue_drivers
+        ADD CONSTRAINT plan_revenue_drivers_driver_type_check
+        CHECK (driver_type IN ('annual_fee','monthly_flat','one_off','quarterly_flat','management_fee'));
+      ALTER TABLE plan_revenue_drivers
+        ADD COLUMN IF NOT EXISTS commitment NUMERIC,
+        ADD COLUMN IF NOT EXISTS fee_pct    NUMERIC;
+    `,
+  },
 ];
 
 async function runMigrations() {
@@ -1398,7 +1412,7 @@ app.put('/api/plan/versions/:id/assumptions', requireAuth, requireAdmin, async (
 
 // ── PLANNING: REVENUE DRIVERS ─────────────────────────────────────────
 
-const VALID_DRIVER_TYPES = new Set(['annual_fee', 'monthly_flat', 'one_off', 'quarterly_flat']);
+const VALID_DRIVER_TYPES = new Set(['annual_fee', 'monthly_flat', 'one_off', 'quarterly_flat', 'management_fee']);
 
 // List drivers for a line item
 app.get('/api/plan/line-items/:liId/drivers', requireAuth, async (req, res) => {
@@ -1421,15 +1435,24 @@ app.get('/api/plan/line-items/:liId/drivers', requireAuth, async (req, res) => {
 app.post('/api/plan/line-items/:liId/drivers', requireAuth, requireAdmin, async (req, res) => {
   try {
     const lineItemId = parseInt(req.params.liId);
-    const { driver_type = 'annual_fee', amount, start_date, end_date,
-            spread_method = 'even', notes, vendor, recurrence } = req.body;
+    const { driver_type = 'annual_fee', start_date, end_date,
+            spread_method = 'even', notes, vendor, recurrence,
+            commitment, fee_pct } = req.body;
+    let { amount } = req.body;
 
-    if (amount === undefined || amount === null)
-      return res.status(400).json({ error: 'amount is required' });
     if (!VALID_DRIVER_TYPES.has(driver_type))
       return res.status(400).json({ error: `driver_type must be one of: ${[...VALID_DRIVER_TYPES].join(', ')}` });
     if (!['even'].includes(spread_method))
       return res.status(400).json({ error: 'spread_method must be even' });
+
+    // management_fee: derive amount from commitment × fee_pct
+    if (driver_type === 'management_fee') {
+      if (commitment == null || fee_pct == null)
+        return res.status(400).json({ error: 'management_fee requires commitment and fee_pct' });
+      amount = Math.round(Number(commitment) * Number(fee_pct) / 100 * 100) / 100;
+    } else if (amount === undefined || amount === null) {
+      return res.status(400).json({ error: 'amount is required' });
+    }
 
     // Verify the line item exists and its version isn't locked
     const { rows: liCheck } = await pool.query(
@@ -1442,11 +1465,14 @@ app.post('/api/plan/line-items/:liId/drivers', requireAuth, requireAdmin, async 
 
     const { rows } = await pool.query(
       `INSERT INTO plan_revenue_drivers
-         (line_item_id, driver_type, amount, start_date, end_date, spread_method, notes, vendor, recurrence, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10)
+         (line_item_id, driver_type, amount, start_date, end_date, spread_method, notes, vendor, recurrence, commitment, fee_pct, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
        RETURNING *`,
       [lineItemId, driver_type, amount, start_date || null, end_date || null,
-       spread_method, notes || null, vendor || null, recurrence || null, req.user.id]
+       spread_method, notes || null, vendor || null, recurrence || null,
+       commitment != null ? Number(commitment) : null,
+       fee_pct    != null ? Number(fee_pct)    : null,
+       req.user.id]
     );
     logAudit(req.user.id, 'plan.driver.create', `id=${rows[0].id} line_item_id=${lineItemId} type=${driver_type}`, req);
     res.status(201).json(rows[0]);
@@ -1459,19 +1485,30 @@ app.post('/api/plan/line-items/:liId/drivers', requireAuth, requireAdmin, async 
 app.patch('/api/plan/line-items/:liId/drivers/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
-    const { driver_type, amount, start_date, end_date, spread_method, notes, vendor, recurrence } = req.body;
+    const { driver_type, start_date, end_date, spread_method, notes, vendor, recurrence,
+            commitment, fee_pct } = req.body;
+    let { amount } = req.body;
 
     if (driver_type !== undefined && !VALID_DRIVER_TYPES.has(driver_type))
       return res.status(400).json({ error: `driver_type must be one of: ${[...VALID_DRIVER_TYPES].join(', ')}` });
 
     const { rows: check } = await pool.query(
-      `SELECT prd.id, pv.locked_at FROM plan_revenue_drivers prd
+      `SELECT prd.id, prd.driver_type, prd.commitment, prd.fee_pct, pv.locked_at
+       FROM plan_revenue_drivers prd
        JOIN plan_line_items pli ON pli.id = prd.line_item_id
        JOIN plan_versions pv   ON pv.id  = pli.version_id
        WHERE prd.id = $1`, [id]
     );
     if (!check.length) return res.status(404).json({ error: 'Driver not found' });
     if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    // Re-derive amount if this is (or is becoming) a management_fee driver
+    const effectiveType = driver_type ?? check[0].driver_type;
+    if (effectiveType === 'management_fee') {
+      const effCommitment = commitment != null ? Number(commitment) : Number(check[0].commitment);
+      const effFeePct     = fee_pct    != null ? Number(fee_pct)    : Number(check[0].fee_pct);
+      amount = Math.round(effCommitment * effFeePct / 100 * 100) / 100;
+    }
 
     const { rows } = await pool.query(
       `UPDATE plan_revenue_drivers SET
@@ -1483,12 +1520,17 @@ app.patch('/api/plan/line-items/:liId/drivers/:id', requireAuth, requireAdmin, a
          notes         = COALESCE($6, notes),
          vendor        = COALESCE($7, vendor),
          recurrence    = COALESCE($8, recurrence),
-         updated_by    = $9,
+         commitment    = COALESCE($9, commitment),
+         fee_pct       = COALESCE($10, fee_pct),
+         updated_by    = $11,
          updated_at    = NOW()
-       WHERE id = $10 RETURNING *`,
+       WHERE id = $12 RETURNING *`,
       [driver_type ?? null, amount ?? null, start_date ?? null,
        end_date ?? null, spread_method ?? null, notes ?? null,
-       vendor ?? null, recurrence ?? null, req.user.id, id]
+       vendor ?? null, recurrence ?? null,
+       commitment != null ? Number(commitment) : null,
+       fee_pct    != null ? Number(fee_pct)    : null,
+       req.user.id, id]
     );
     logAudit(req.user.id, 'plan.driver.update', `id=${id}`, req);
     res.json(rows[0]);

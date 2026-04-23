@@ -932,6 +932,13 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 }
 .pg-row:hover .pg-del-btn { display: inline-block; }
 .pg-del-btn:hover { background: #fee2e2; }
+.pg-driver-btn {
+  display: none; background: none; border: none; color: #4f6ef7;
+  font-size: .75rem; cursor: pointer; padding: .2rem .35rem;
+  border-radius: 5px; transition: background .1s;
+}
+.pg-row:hover .pg-driver-btn { display: inline-block; }
+.pg-driver-btn:hover { background: #eef1fb; }
 
 /* Total row */
 .pg-total-row td {

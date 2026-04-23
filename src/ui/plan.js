@@ -13,6 +13,7 @@ import {
   getPlanVersions, createPlanVersion, updatePlanVersion, lockPlanVersion, deletePlanVersion,
   getPlanLineItems, createPlanLineItem, deletePlanLineItem,
   getPlanEntries, upsertPlanEntries,
+  getRevenueDrivers, createRevenueDriver, updateRevenueDriver, deleteRevenueDriver, generateFromDrivers,
 } from '../lib/db.js';
 import { showToast } from './screen.js';
 import { aggregateByCategory, compareVersions, COMPARE_ROWS } from '../lib/plan-compare.js';
@@ -26,6 +27,11 @@ let _entries        = [];     // plan_entries for current version (all months)
 let _categoryFilter = 'all';  // 'all' | 'revenue' | 'personnel' | 'opex' | 'allocation' | 'other'
 let _pendingEdits   = {};     // { `${lineItemId}_${month}`: amount }
 let _saving         = false;
+
+// Driver modal state
+let _driverLineItemId = null;
+let _driverEditId     = null;  // null = create, number = editing existing
+let _driverList       = [];    // cached drivers for the open line item
 
 const CATEGORIES = ['all', 'revenue', 'personnel', 'opex', 'allocation', 'other'];
 const CAT_LABEL  = { all: 'Alle', revenue: 'Umsatz', personnel: 'Personal',
@@ -303,6 +309,7 @@ function gridRow(li, monthAmounts, locked) {
       ${cells.join('')}
       <td class="pg-total-cell">${fmtCell(rowTotal)}</td>
       ${!locked ? `<td class="pg-actions-cell">
+        ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue Drivers">⚙</button>` : ''}
         <button class="pg-del-btn" onclick="planDeleteLineItem(${li.id})" title="Position löschen">✕</button>
       </td>` : ''}
     </tr>`;
@@ -838,4 +845,235 @@ function fmtCell(v) {
 function formatInputVal(v) {
   // Show as plain number for editing, no thousand separators
   return Number(v).toFixed(2).replace(/\.00$/, '').replace('.', ',');
+}
+
+// ── Revenue driver modal ──────────────────────────────────────────────
+
+const DRIVER_TYPE_LABEL = {
+  management_fee: 'Management Fee',
+  annual_fee:     'Jahresbetrag',
+  monthly_flat:   'Monatlicher Fixbetrag',
+  one_off:        'Einmalzahlung',
+};
+
+const FMT_EUR = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+
+export async function openDriverModal(lineItemId) {
+  _driverLineItemId = lineItemId;
+  _driverEditId = null;
+
+  const li = _lineItems.find(l => l.id === lineItemId);
+  document.getElementById('pdm-title').textContent =
+    `Revenue Drivers — ${li ? esc(li.label) : lineItemId}`;
+
+  try {
+    _driverList = await getRevenueDrivers(lineItemId);
+  } catch (e) {
+    _driverList = [];
+  }
+
+  _resetDriverForm();
+  _renderDriverList();
+
+  const m = document.getElementById('plan-driver-modal');
+  m.style.display = 'flex';
+}
+
+export function closeDriverModal() {
+  document.getElementById('plan-driver-modal').style.display = 'none';
+  _driverLineItemId = null;
+  _driverEditId = null;
+}
+
+export function driverTypeChanged() {
+  const type = document.getElementById('pdm-type').value;
+  document.getElementById('pdm-mgmt-fields').style.display  = type === 'management_fee' ? 'grid' : 'none';
+  document.getElementById('pdm-amount-field').style.display = type === 'management_fee' ? 'none' : 'block';
+  _updateDriverPreview();
+}
+
+export function driverPreviewUpdate() {
+  _updateDriverPreview();
+}
+
+function _updateDriverPreview() {
+  const preview = document.getElementById('pdm-preview');
+  if (!preview) return;
+  const type = document.getElementById('pdm-type').value;
+  if (type === 'management_fee') {
+    const c   = parseFloat(document.getElementById('pdm-commitment').value) || 0;
+    const pct = parseFloat(document.getElementById('pdm-fee-pct').value)    || 0;
+    const annual = c * pct / 100;
+    preview.textContent = annual > 0
+      ? `→ ${FMT_EUR.format(annual)} p.a. · ${FMT_EUR.format(annual / 12)} / Monat`
+      : '';
+  } else {
+    preview.textContent = '';
+  }
+}
+
+export async function submitDriver() {
+  const type  = document.getElementById('pdm-type').value;
+  const start = document.getElementById('pdm-start').value || null;
+  const end   = document.getElementById('pdm-end').value   || null;
+  const notes = document.getElementById('pdm-notes').value.trim() || null;
+  const errEl = document.getElementById('pdm-error');
+  errEl.textContent = '';
+
+  let payload = { driver_type: type, start_date: start, end_date: end, notes };
+
+  if (type === 'management_fee') {
+    const commitment = parseFloat(document.getElementById('pdm-commitment').value);
+    const fee_pct    = parseFloat(document.getElementById('pdm-fee-pct').value);
+    if (!commitment || !fee_pct) { errEl.textContent = 'Bitte Commitment und Fee % angeben.'; return; }
+    payload = { ...payload, commitment, fee_pct };
+  } else {
+    const rawAmt = document.getElementById('pdm-amount').value.replace(',', '.');
+    const amount = parseFloat(rawAmt);
+    if (isNaN(amount)) { errEl.textContent = 'Bitte Betrag angeben.'; return; }
+    payload = { ...payload, amount };
+  }
+
+  const btn = document.getElementById('pdm-submit');
+  btn.disabled = true;
+  try {
+    if (_driverEditId) {
+      await updateRevenueDriver(_driverLineItemId, _driverEditId, payload);
+    } else {
+      await createRevenueDriver(_driverLineItemId, payload);
+    }
+    _driverList = await getRevenueDrivers(_driverLineItemId);
+    _resetDriverForm();
+    _renderDriverList();
+  } catch (e) {
+    errEl.textContent = e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+export async function driverGenerate() {
+  if (!_driverLineItemId) return;
+  const btn = document.getElementById('pdm-gen-btn');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await generateFromDrivers(_driverLineItemId);
+    // Reload entries so the grid reflects generated amounts
+    _entries = await (await import('../lib/db.js')).getPlanEntries(_currentVersion.id);
+    renderGrid();
+    showToast(`${result.entries?.length ?? 0} Einträge generiert.`);
+    closeDriverModal();
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+    if (btn) btn.disabled = false;
+  }
+}
+
+export async function driverDelete(driverId) {
+  if (!confirm('Driver löschen?')) return;
+  try {
+    await deleteRevenueDriver(_driverLineItemId, driverId);
+    _driverList = _driverList.filter(d => d.id !== driverId);
+    _renderDriverList();
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+  }
+}
+
+export function driverEdit(driverId) {
+  const d = _driverList.find(x => x.id === driverId);
+  if (!d) return;
+  _driverEditId = driverId;
+
+  document.getElementById('pdm-type').value = d.driver_type;
+  driverTypeChanged();
+
+  if (d.driver_type === 'management_fee') {
+    document.getElementById('pdm-commitment').value = d.commitment ?? '';
+    document.getElementById('pdm-fee-pct').value    = d.fee_pct    ?? '';
+    _updateDriverPreview();
+  } else {
+    document.getElementById('pdm-amount').value = d.amount ?? '';
+  }
+  document.getElementById('pdm-start').value = d.start_date ? d.start_date.slice(0, 10) : '';
+  document.getElementById('pdm-end').value   = d.end_date   ? d.end_date.slice(0, 10)   : '';
+  document.getElementById('pdm-notes').value = d.notes ?? '';
+  document.getElementById('pdm-submit').textContent = 'Aktualisieren';
+  document.getElementById('pdm-error').textContent  = '';
+}
+
+function _resetDriverForm() {
+  document.getElementById('pdm-type').value       = 'management_fee';
+  document.getElementById('pdm-commitment').value = '';
+  document.getElementById('pdm-fee-pct').value    = '';
+  document.getElementById('pdm-amount').value     = '';
+  document.getElementById('pdm-start').value      = '';
+  document.getElementById('pdm-end').value        = '';
+  document.getElementById('pdm-notes').value      = '';
+  document.getElementById('pdm-preview').textContent = '';
+  document.getElementById('pdm-error').textContent   = '';
+  document.getElementById('pdm-submit').textContent  = 'Speichern';
+  document.getElementById('pdm-mgmt-fields').style.display  = 'grid';
+  document.getElementById('pdm-amount-field').style.display = 'none';
+  _driverEditId = null;
+}
+
+function _renderDriverList() {
+  // Render existing drivers above the form inside the modal body
+  let existing = document.getElementById('pdm-existing-list');
+  if (!existing) {
+    existing = document.createElement('div');
+    existing.id = 'pdm-existing-list';
+    existing.style.cssText = 'margin-bottom:.75rem';
+    const body = document.querySelector('#plan-driver-modal .plan-modal-body');
+    body.insertBefore(existing, body.firstChild);
+  }
+
+  // Generate button
+  const hasDrivers = _driverList.length > 0;
+  const genBtn = hasDrivers
+    ? `<button id="pdm-gen-btn" class="btn-plan-primary" style="font-size:.75rem;padding:.3rem .75rem" onclick="driverGenerate()">
+         ▶ Einträge generieren
+       </button>`
+    : '';
+
+  if (!_driverList.length) {
+    existing.innerHTML = `<div style="font-size:.78rem;color:#a0aabb;margin-bottom:.5rem">Noch keine Drivers definiert.</div>`;
+    return;
+  }
+
+  existing.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
+      <div style="font-size:.72rem;font-weight:700;color:#6b7a99;text-transform:uppercase;letter-spacing:.04em">Bestehende Drivers</div>
+      ${genBtn}
+    </div>
+    <table style="width:100%;font-size:.76rem;border-collapse:collapse">
+      <thead>
+        <tr style="color:#a0aabb;font-weight:600">
+          <th style="text-align:left;padding:.2rem .4rem">Typ</th>
+          <th style="text-align:right;padding:.2rem .4rem">p.a.</th>
+          <th style="text-align:right;padding:.2rem .4rem">/ Monat</th>
+          <th style="padding:.2rem .4rem"></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${_driverList.map(d => {
+          const annualAmt = Number(d.amount);
+          const label = d.driver_type === 'management_fee'
+            ? `${FMT_EUR.format(d.commitment)} × ${d.fee_pct}%`
+            : DRIVER_TYPE_LABEL[d.driver_type] ?? d.driver_type;
+          return `
+            <tr style="border-top:1px solid #f0f2f8">
+              <td style="padding:.3rem .4rem;color:#1e2433;font-weight:600">${label}${d.notes ? `<br><span style="color:#a0aabb;font-weight:400">${esc(d.notes)}</span>` : ''}</td>
+              <td style="padding:.3rem .4rem;text-align:right;color:#4f6ef7;font-weight:700">${FMT_EUR.format(annualAmt)}</td>
+              <td style="padding:.3rem .4rem;text-align:right;color:#6b7a99">${FMT_EUR.format(annualAmt / 12)}</td>
+              <td style="padding:.3rem .4rem;text-align:right;white-space:nowrap">
+                <button class="btn-sm" style="font-size:.68rem;padding:.15rem .4rem" onclick="driverEdit(${d.id})">✎</button>
+                <button class="btn-sm" style="font-size:.68rem;padding:.15rem .4rem;color:#dc2626;border-color:#fecaca" onclick="driverDelete(${d.id})">✕</button>
+              </td>
+            </tr>`;
+        }).join('')}
+      </tbody>
+    </table>
+    <div style="margin:.5rem 0;border-top:2px solid #e4e9f5"></div>`;
 }

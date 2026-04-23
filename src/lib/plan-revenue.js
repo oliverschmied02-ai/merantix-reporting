@@ -63,8 +63,8 @@ export function activeMonthWeight(year, start, end) {
  * Months outside the driver's date range produce no entry (not zero entries).
  *
  * @param {object} driver
- * @param {string}    driver.driver_type   'annual_fee' | 'monthly_flat' | 'one_off' | 'quarterly_flat'
- * @param {number}    driver.amount
+ * @param {string}    driver.driver_type   'annual_fee' | 'monthly_flat' | 'one_off' | 'quarterly_flat' | 'management_fee'
+ * @param {number}    driver.amount        For management_fee: pre-computed commitment × fee_pct / 100
  * @param {Date|null} driver.start_date
  * @param {Date|null} driver.end_date
  * @param {string}    driver.spread_method  'even' (only supported value now)
@@ -118,6 +118,29 @@ export function spreadDriver(driver, planYear) {
           break;
         }
       }
+    }
+    return result;
+  }
+
+  // management_fee: commitment × fee_pct / 100 = annual amount, spread evenly like annual_fee
+  // amount is already pre-computed (commitment × fee_pct / 100) by the server before storage
+  if (driver_type === 'management_fee') {
+    const totalWeight = activeMonthWeight(planYear, effectiveStart, effectiveEnd);
+    if (totalWeight === 0) return [];
+    let distributed = 0;
+    const months = [];
+    for (let m = 1; m <= 12; m++) {
+      const frac = monthFraction(planYear, m, effectiveStart, effectiveEnd);
+      if (frac > 0) months.push({ month: m, frac });
+    }
+    for (let i = 0; i < months.length; i++) {
+      const { month, frac } = months[i];
+      const isLast = i === months.length - 1;
+      const monthAmount = isLast
+        ? round2(Number(amount) - distributed)
+        : round2(Number(amount) * (frac / totalWeight));
+      distributed += monthAmount;
+      result.push({ month, year: planYear, amount: monthAmount });
     }
     return result;
   }

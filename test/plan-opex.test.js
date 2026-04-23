@@ -157,3 +157,49 @@ describe('spreadDrivers — opex mix', () => {
     assert.equal(jul.amount, 3200); // 3000 quarterly + 200 flat
   });
 });
+
+// ── management_fee ────────────────────────────────────────────────────
+
+describe('management_fee — full year', () => {
+  const mgmt = (overrides = {}) => ({
+    driver_type: 'management_fee',
+    amount: 2000000,   // 100m × 2% pre-computed by server
+    start_date: null,
+    end_date: null,
+    spread_method: 'even',
+    ...overrides,
+  });
+
+  it('produces 12 entries for a full-year driver', () => {
+    const entries = spreadDriver(mgmt(), 2025);
+    assert.equal(entries.length, 12);
+  });
+
+  it('annual total equals the supplied amount', () => {
+    const entries = spreadDriver(mgmt(), 2025);
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    assert.ok(Math.abs(total - 2000000) < 0.01);
+  });
+
+  it('distributes evenly — each month ~166666.67', () => {
+    const entries = spreadDriver(mgmt(), 2025);
+    for (const e of entries) {
+      assert.ok(Math.abs(e.amount - 2000000 / 12) < 1);
+    }
+  });
+
+  it('respects start_date — partial year sums correctly', () => {
+    // Start July 1 → 6 active months
+    const entries = spreadDriver(mgmt({ start_date: '2025-07-01' }), 2025);
+    assert.equal(entries.length, 6);
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    assert.ok(Math.abs(total - 2000000) < 0.01);
+  });
+
+  it('assigns remainder to last month to avoid rounding drift', () => {
+    // Use an amount that doesn't divide evenly
+    const entries = spreadDriver(mgmt({ amount: 1000001 }), 2025);
+    const total = entries.reduce((s, e) => s + e.amount, 0);
+    assert.ok(Math.abs(total - 1000001) < 0.01);
+  });
+});
