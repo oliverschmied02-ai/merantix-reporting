@@ -8,6 +8,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import pino from 'pino';
+import { spreadDrivers } from './src/lib/plan-revenue.js';
 
 const log = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -256,6 +257,44 @@ const MIGRATIONS = [
       CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_li_unique
         ON plan_entries(version_id, line_item_id, month)
         WHERE line_item_id IS NOT NULL;
+    `,
+  },
+  {
+    version: 8,
+    description: 'Revenue drivers: plan_revenue_drivers + is_manual_override on plan_entries',
+    sql: `
+      -- Typed revenue assumption attached to a plan_line_item.
+      -- The spreading engine reads this and generates plan_entries rows.
+      -- driver_type:
+      --   annual_fee   — total annual amount spread evenly over active months
+      --   monthly_flat — fixed amount per active month (no spreading needed)
+      --   one_off      — single amount placed in a specific month
+      CREATE TABLE IF NOT EXISTS plan_revenue_drivers (
+        id            SERIAL PRIMARY KEY,
+        line_item_id  INTEGER     NOT NULL REFERENCES plan_line_items(id) ON DELETE CASCADE,
+        driver_type   TEXT        NOT NULL DEFAULT 'annual_fee'
+                      CHECK (driver_type IN ('annual_fee','monthly_flat','one_off')),
+        amount        NUMERIC     NOT NULL,
+        -- Date range within the plan year (inclusive).
+        -- NULL start = first day of plan year. NULL end = last day of plan year.
+        start_date    DATE,
+        end_date      DATE,
+        -- Spreading method. 'even' = equal share per full or partial calendar month.
+        -- 'custom' reserved for future weighted spreading.
+        spread_method TEXT        NOT NULL DEFAULT 'even'
+                      CHECK (spread_method IN ('even','custom')),
+        notes         TEXT,
+        created_by    INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by    INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_prd_line_item ON plan_revenue_drivers(line_item_id);
+
+      -- Flag set when a user manually edits a generated entry.
+      -- The generate endpoint skips months where this is TRUE.
+      ALTER TABLE plan_entries
+        ADD COLUMN IF NOT EXISTS is_manual_override BOOLEAN NOT NULL DEFAULT FALSE;
     `,
   },
 ];
@@ -1219,6 +1258,203 @@ app.put('/api/plan/versions/:id/assumptions', requireAuth, requireAdmin, async (
     await client.query('COMMIT');
     logAudit(req.user.id, 'plan.assumptions.update', `version_id=${versionId}`, req);
     res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── PLANNING: REVENUE DRIVERS ─────────────────────────────────────────
+
+const VALID_DRIVER_TYPES = new Set(['annual_fee', 'monthly_flat', 'one_off']);
+
+// List drivers for a line item
+app.get('/api/plan/line-items/:liId/drivers', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT prd.*, u.name AS updated_by_name
+       FROM plan_revenue_drivers prd
+       LEFT JOIN users u ON u.id = prd.updated_by
+       WHERE prd.line_item_id = $1
+       ORDER BY prd.id`,
+      [parseInt(req.params.liId)]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a driver
+app.post('/api/plan/line-items/:liId/drivers', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const lineItemId = parseInt(req.params.liId);
+    const { driver_type = 'annual_fee', amount, start_date, end_date,
+            spread_method = 'even', notes } = req.body;
+
+    if (amount === undefined || amount === null)
+      return res.status(400).json({ error: 'amount is required' });
+    if (!VALID_DRIVER_TYPES.has(driver_type))
+      return res.status(400).json({ error: `driver_type must be one of: ${[...VALID_DRIVER_TYPES].join(', ')}` });
+    if (!['even'].includes(spread_method))
+      return res.status(400).json({ error: 'spread_method must be even' });
+
+    // Verify the line item exists and its version isn't locked
+    const { rows: liCheck } = await pool.query(
+      `SELECT pli.id, pv.locked_at FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1`, [lineItemId]
+    );
+    if (!liCheck.length) return res.status(404).json({ error: 'Line item not found' });
+    if (liCheck[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO plan_revenue_drivers
+         (line_item_id, driver_type, amount, start_date, end_date, spread_method, notes, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+       RETURNING *`,
+      [lineItemId, driver_type, amount, start_date || null, end_date || null,
+       spread_method, notes || null, req.user.id]
+    );
+    logAudit(req.user.id, 'plan.driver.create', `id=${rows[0].id} line_item_id=${lineItemId} type=${driver_type}`, req);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update a driver
+app.patch('/api/plan/line-items/:liId/drivers/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { driver_type, amount, start_date, end_date, spread_method, notes } = req.body;
+
+    if (driver_type !== undefined && !VALID_DRIVER_TYPES.has(driver_type))
+      return res.status(400).json({ error: `driver_type must be one of: ${[...VALID_DRIVER_TYPES].join(', ')}` });
+
+    const { rows: check } = await pool.query(
+      `SELECT prd.id, pv.locked_at FROM plan_revenue_drivers prd
+       JOIN plan_line_items pli ON pli.id = prd.line_item_id
+       JOIN plan_versions pv   ON pv.id  = pli.version_id
+       WHERE prd.id = $1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Driver not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `UPDATE plan_revenue_drivers SET
+         driver_type   = COALESCE($1, driver_type),
+         amount        = COALESCE($2, amount),
+         start_date    = COALESCE($3, start_date),
+         end_date      = COALESCE($4, end_date),
+         spread_method = COALESCE($5, spread_method),
+         notes         = COALESCE($6, notes),
+         updated_by    = $7,
+         updated_at    = NOW()
+       WHERE id = $8 RETURNING *`,
+      [driver_type ?? null, amount ?? null, start_date ?? null,
+       end_date ?? null, spread_method ?? null, notes ?? null, req.user.id, id]
+    );
+    logAudit(req.user.id, 'plan.driver.update', `id=${id}`, req);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a driver
+app.delete('/api/plan/line-items/:liId/drivers/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: check } = await pool.query(
+      `SELECT prd.id, pv.locked_at FROM plan_revenue_drivers prd
+       JOIN plan_line_items pli ON pli.id = prd.line_item_id
+       JOIN plan_versions pv   ON pv.id  = pli.version_id
+       WHERE prd.id = $1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Driver not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+    await pool.query('DELETE FROM plan_revenue_drivers WHERE id=$1', [id]);
+    logAudit(req.user.id, 'plan.driver.delete', `id=${id}`, req);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Generate monthly entries from all drivers on a line item.
+// Skips months where is_manual_override=TRUE.
+// Returns a preview when ?dry_run=true — no DB writes.
+app.post('/api/plan/line-items/:liId/generate', requireAuth, requireAdmin, async (req, res) => {
+  const lineItemId = parseInt(req.params.liId);
+  const dryRun = req.query.dry_run === 'true';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: liRows } = await client.query(
+      `SELECT pli.item_id, pv.year, pv.locked_at, pv.id AS version_id
+       FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1`, [lineItemId]
+    );
+    if (!liRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Line item not found' }); }
+    if (liRows[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
+
+    const { item_id, year, version_id } = liRows[0];
+
+    // Load all drivers for this line item
+    const { rows: drivers } = await client.query(
+      'SELECT * FROM plan_revenue_drivers WHERE line_item_id=$1',
+      [lineItemId]
+    );
+
+    // Load manual override flags for this line item
+    const { rows: existingEntries } = await client.query(
+      'SELECT month, is_manual_override FROM plan_entries WHERE version_id=$1 AND line_item_id=$2',
+      [version_id, lineItemId]
+    );
+    const manualMonths = new Set(
+      existingEntries.filter(e => e.is_manual_override).map(e => e.month)
+    );
+
+    // Spread all drivers, then filter out manual-override months
+    const generated = spreadDrivers(drivers, year)
+      .filter(e => !manualMonths.has(e.month));
+
+    if (dryRun) {
+      await client.query('ROLLBACK');
+      return res.json({
+        dry_run: true,
+        year,
+        generated,
+        skipped_manual_months: [...manualMonths].sort(),
+      });
+    }
+
+    // Upsert generated entries (only non-override months)
+    for (const e of generated) {
+      await client.query(
+        `INSERT INTO plan_entries
+           (version_id, line_item_id, item_id, month, year, amount, is_manual_override, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7,NOW())
+         ON CONFLICT (version_id, line_item_id, month)
+         WHERE line_item_id IS NOT NULL
+         DO UPDATE SET amount=$6, is_manual_override=FALSE, updated_by=$7, updated_at=NOW()`,
+        [version_id, lineItemId, item_id, e.month, year, e.amount, req.user.id]
+      );
+    }
+
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.generate', `line_item_id=${lineItemId} generated=${generated.length} skipped_manual=${manualMonths.size}`, req);
+    res.json({
+      ok: true,
+      generated: generated.length,
+      skipped_manual_months: [...manualMonths].sort(),
+    });
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: e.message });

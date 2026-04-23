@@ -339,3 +339,42 @@ export async function savePlanAssumptions(versionId, assumptions) {
   if (!res.ok) throw new Error(data.error);
   return data;
 }
+
+// ── Planning: revenue drivers ─────────────────────────────────────────
+
+export async function getRevenueDrivers(lineItemId) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/drivers`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function createRevenueDriver(lineItemId, data) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/drivers`, {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function updateRevenueDriver(lineItemId, driverId, patch) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/drivers/${driverId}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function deleteRevenueDriver(lineItemId, driverId) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/drivers/${driverId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
+export async function generateFromDrivers(lineItemId, dryRun = false) {
+  const url = `/api/plan/line-items/${lineItemId}/generate${dryRun ? '?dry_run=true' : ''}`;
+  const res = await apiFetch(url, { method: 'POST' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
