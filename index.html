@@ -348,15 +348,15 @@
         <div id="plan-lineitem-modal" style="display:none;position:fixed;inset:0;background:rgba(30,36,51,.45);z-index:400;align-items:center;justify-content:center">
           <div class="plan-modal" style="min-width:440px">
             <div class="plan-modal-header">
-              <div class="plan-modal-title">Position hinzufügen</div>
-              <button class="drill-close" onclick="closeLineItemModal()">✕</button>
+              <div class="plan-modal-title">Position hinzufügen — <span id="plm-tab-label" style="color:#4f6ef7"></span></div>
+              <button class="drill-close" onclick="closeLineItemModalAndCleanup()">✕</button>
             </div>
             <div class="plan-modal-body">
               <div class="plan-field">
                 <label class="plan-label">Bezeichnung</label>
                 <input id="plm-label" class="plan-input" placeholder="z.B. Fund II Management Fee" autocomplete="off"/>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+              <div id="plm-category-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
                 <div class="plan-field">
                   <label class="plan-label">Kategorie</label>
                   <select id="plm-category" class="plan-input ctrl" onchange="plmCategoryChanged()">
@@ -418,7 +418,7 @@
               <div id="plm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
             </div>
             <div class="plan-modal-footer">
-              <button class="btn-sm" onclick="closeLineItemModal()">Abbrechen</button>
+              <button class="btn-sm" onclick="closeLineItemModalAndCleanup()">Abbrechen</button>
               <button class="btn-plan-primary" id="plm-submit" onclick="submitAddLineItem()">Hinzufügen</button>
             </div>
           </div>

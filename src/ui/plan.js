@@ -9,6 +9,7 @@
  */
 
 import { esc, MONTH_SHORT } from '../lib/utils.js';
+import { APP } from '../state.js';
 import {
   getPlanVersions, createPlanVersion, updatePlanVersion, lockPlanVersion, deletePlanVersion,
   getPlanLineItems, createPlanLineItem, deletePlanLineItem,
@@ -243,6 +244,12 @@ export function renderGrid() {
     entryMap.get(e.line_item_id)[e.month] = Number(e.amount);
   }
 
+  // OpEx gets P&L-grouped rendering
+  if (_categoryFilter === 'opex') {
+    el.innerHTML = renderOpexGrouped(items, entryMap, locked);
+    return;
+  }
+
   const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem()">+ Position</button>` : '';
 
   if (!items.length) {
@@ -262,7 +269,6 @@ export function renderGrid() {
             <th class="pg-pos">Position</th>
             ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
             <th class="pg-total">Gesamt</th>
-            ${!locked ? '<th class="pg-actions"></th>' : ''}
           </tr>
         </thead>
         <tbody>
@@ -291,6 +297,95 @@ async function _ensurePersonnelLineItems() {
     });
     _lineItems.push(li);
   }
+}
+
+// ── OpEx grouped render ────────────────────────────────────────────────
+
+function renderOpexGrouped(items, entryMap, locked) {
+  // Get opex subitems from plDef
+  const opexDef = APP.plDef?.find(s => s.id === 'opex');
+  const plGroups = opexDef?.items ?? [];
+
+  // Group existing line items by item_id
+  const byItemId = new Map();
+  for (const li of items) {
+    const key = li.item_id || 'opex';
+    if (!byItemId.has(key)) byItemId.set(key, []);
+    byItemId.get(key).push(li);
+  }
+
+  // Collect all active group ids (plDef + any unmapped)
+  const plIds = new Set(plGroups.map(g => g.id));
+  const activeGroupIds = [...new Set([
+    ...plGroups.map(g => g.id),
+    ...[...byItemId.keys()].filter(k => !plIds.has(k)),
+  ])];
+
+  const colTotals = new Array(12).fill(0);
+  let grandTotal = 0;
+
+  const groupBlocks = activeGroupIds.map(groupId => {
+    const groupDef = plGroups.find(g => g.id === groupId);
+    const groupLabel = groupDef?.label ?? groupId;
+    const groupItems = byItemId.get(groupId) ?? [];
+
+    // Compute group subtotals
+    const groupColTotals = new Array(12).fill(0);
+    for (const li of groupItems) {
+      const ma = entryMap.get(li.id) || {};
+      for (let m = 1; m <= 12; m++) {
+        const pending = _pendingEdits[`${li.id}_${m}`];
+        const val = pending !== undefined ? pending : (ma[m] ?? 0);
+        groupColTotals[m - 1] += val;
+        colTotals[m - 1] += val;
+        grandTotal += val;
+      }
+    }
+    const groupTotal = groupColTotals.reduce((s, v) => s + v, 0);
+
+    const headerRow = `
+      <tr class="pg-opex-group-header">
+        <td class="pg-opex-group-label" colspan="${12 + 2}">
+          <span>${esc(groupLabel)}</span>
+          ${!locked ? `<button class="pg-opex-add-btn" onclick="planAddLineItem('${groupId}')">+ Position</button>` : ''}
+        </td>
+      </tr>`;
+
+    const itemRows = groupItems.map(li => gridRow(li, entryMap.get(li.id) || {}, locked)).join('');
+
+    const subtotalRow = groupItems.length > 1 ? `
+      <tr class="pg-opex-subtotal-row">
+        <td class="pg-pos-cell" style="font-style:italic;color:#9aa">Zwischensumme</td>
+        ${groupColTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
+        <td class="pg-total-cell">${fmtCell(groupTotal)}</td>
+      </tr>` : '';
+
+    return headerRow + itemRows + subtotalRow;
+  });
+
+  const totalRow = `
+    <tr class="pg-total-row">
+      <td class="pg-pos-cell" style="font-weight:700">Summe OpEx</td>
+      ${colTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
+      <td class="pg-total-cell pg-grand">${fmtCell(grandTotal)}</td>
+    </tr>`;
+
+  return `
+    <div class="plan-grid-wrap">
+      <table class="plan-grid">
+        <thead>
+          <tr>
+            <th class="pg-pos">Position</th>
+            ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
+            <th class="pg-total">Gesamt</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${groupBlocks.join('')}
+        </tbody>
+        <tfoot>${totalRow}</tfoot>
+      </table>
+    </div>`;
 }
 
 function gridRow(li, monthAmounts, locked) {
@@ -325,19 +420,22 @@ function gridRow(li, monthAmounts, locked) {
     }
   }
 
+  const actionBtns = !locked ? `
+    <span class="pg-row-actions">
+      ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue-Treiber">⚙</button>` : ''}
+      <button class="pg-del-btn" onclick="planDeleteLineItem(${li.id})" title="Löschen">✕</button>
+    </span>` : '';
+
   return `
     <tr class="pg-row" id="pgrow-${li.id}">
       <td class="pg-pos-cell">
+        ${actionBtns}
         <span class="pg-li-label">${esc(li.label)}</span>
         ${li.entity ? `<span class="pg-li-tag">${esc(li.entity)}</span>` : ''}
         ${li.fund_ref ? `<span class="pg-li-tag pg-li-fund">${esc(li.fund_ref)}</span>` : ''}
       </td>
       ${cells.join('')}
       <td class="pg-total-cell">${fmtCell(rowTotal)}</td>
-      ${!locked ? `<td class="pg-actions-cell pg-actions-visible">
-        ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue-Treiber konfigurieren">⚙</button>` : ''}
-        <button class="pg-del-btn" onclick="planDeleteLineItem(${li.id})" title="Position löschen">✕</button>
-      </td>` : ''}
     </tr>`;
 }
 
@@ -358,7 +456,6 @@ function gridTotalRow(items, entryMap, locked) {
       <td class="pg-pos-cell" style="font-weight:700">Summe</td>
       ${colTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
       <td class="pg-total-cell pg-grand">${fmtCell(grandTotal)}</td>
-      ${!locked ? '<td></td>' : ''}
     </tr>`;
 }
 
@@ -529,19 +626,32 @@ export async function planSaveEdits() {
 
 let _plmDriverMode = 'management_fee'; // 'management_fee' | 'one_off' | 'manual'
 
-export function planAddLineItem() {
+export function planAddLineItem(opexItemId = null) {
   const m = document.getElementById('plan-lineitem-modal');
   if (!m) return;
-  const defaultCat = ['revenue','opex','depreciation'].includes(_categoryFilter) ? _categoryFilter : 'opex';
+  const cat = ['revenue','opex','depreciation'].includes(_categoryFilter) ? _categoryFilter : 'opex';
   m.style.display = 'flex';
   document.getElementById('plm-label').value    = '';
-  document.getElementById('plm-category').value = defaultCat;
+  document.getElementById('plm-category').value = cat;
   document.getElementById('plm-entity').value   = '';
   document.getElementById('plm-fund').value     = '';
-  document.getElementById('plm-itemid').value   = defaultCat;
+  document.getElementById('plm-itemid').value   = opexItemId || cat;
   document.getElementById('plm-error').textContent = '';
+
+  // Hide category row — locked to current tab
+  const catRow = document.getElementById('plm-category-row');
+  if (catRow) catRow.style.display = 'none';
+  const labelEl = document.getElementById('plm-tab-label');
+  if (labelEl) labelEl.textContent = CAT_LABEL[cat] ?? cat;
+
   _plmDriverMode = 'management_fee';
   plmCategoryChanged();
+}
+
+export function closeLineItemModalAndCleanup() {
+  const catRow = document.getElementById('plm-category-row');
+  if (catRow) catRow.style.display = '';
+  closeLineItemModal();
 }
 
 export function plmCategoryChanged() {

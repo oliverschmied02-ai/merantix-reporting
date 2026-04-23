@@ -8,7 +8,7 @@
  * setPersonnelRefresh() so this module never imports from plan.js (no circular deps).
  */
 
-import { esc } from '../lib/utils.js';
+import { esc, MONTH_SHORT } from '../lib/utils.js';
 import {
   getPersonnelDrivers, createPersonnelDriver, updatePersonnelDriver,
   deletePersonnelDriver, generatePersonnelEntries,
@@ -109,6 +109,26 @@ export async function renderPersonnelView(container, lineItems, year, locked) {
       <td colspan="${2 + (extraCols)}"></td>
     </tr>` : '';
 
+  // Monthly cost breakdown: sum all drivers per month
+  const monthlyTotals = Array.from({ length: 12 }, (_, i) => {
+    return allDrivers.reduce((sum, d) => {
+      const entries = spreadPersonnel(d, year);
+      const entry = entries.find(e => e.month === i + 1);
+      return sum + (entry?.amount ?? 0);
+    }, 0);
+  });
+  const monthlyRow = `
+    <div class="hc-monthly-bar">
+      <div class="hc-monthly-title">Personalkosten / Monat</div>
+      <div class="hc-monthly-cells">
+        ${monthlyTotals.map((v, i) => `
+          <div class="hc-monthly-cell">
+            <div class="hc-monthly-label">${MONTH_SHORT[i]}</div>
+            <div class="hc-monthly-val">${FMT.format(Math.round(v))}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+
   container.innerHTML = `
     <div class="hc-wrap">
       <div class="hc-toolbar">
@@ -124,7 +144,8 @@ export async function renderPersonnelView(container, lineItems, year, locked) {
               <thead>${headerRow}</thead>
               <tbody>${bodyRows}${totalRow}</tbody>
             </table>
-          </div>`
+          </div>
+          ${monthlyRow}`
       }
     </div>`;
 }

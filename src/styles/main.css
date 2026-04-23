@@ -924,19 +924,51 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .pg-editable.pg-dirty .pg-input { color: #d97706; }
 
 /* Action buttons — always visible when .pg-actions-visible */
-.pg-actions-cell { width: 64px; padding: .2rem .4rem !important; white-space: nowrap; }
+/* Actions inside pos-cell (left side) */
+.pg-row-actions { display: inline-flex; gap: .2rem; margin-right: .4rem; vertical-align: middle; }
 .pg-del-btn {
   background: none; border: none; color: #dc2626;
-  font-size: .75rem; cursor: pointer; padding: .2rem .35rem;
-  border-radius: 5px; transition: background .1s; opacity: .55;
+  font-size: .72rem; cursor: pointer; padding: .15rem .3rem;
+  border-radius: 4px; transition: background .1s; opacity: .5;
 }
 .pg-del-btn:hover { background: #fee2e2; opacity: 1; }
 .pg-driver-btn {
   background: none; border: 1px solid #c7d0f7; color: #4f6ef7;
-  font-size: .75rem; cursor: pointer; padding: .2rem .4rem;
-  border-radius: 5px; transition: background .1s; opacity: .8;
+  font-size: .72rem; cursor: pointer; padding: .15rem .35rem;
+  border-radius: 4px; transition: background .1s; opacity: .75;
 }
 .pg-driver-btn:hover { background: #eef1fb; opacity: 1; }
+
+/* OpEx grouped view */
+.pg-opex-group-header td {
+  background: #f1f4fb; font-weight: 700; font-size: .78rem; color: #4f6ef7;
+  padding: .55rem .75rem; border-top: 2px solid #dde3f5;
+}
+.pg-opex-group-label { display: flex; align-items: center; gap: .75rem; }
+.pg-opex-add-btn {
+  background: none; border: 1px solid #c7d0f7; color: #4f6ef7;
+  font-size: .72rem; cursor: pointer; padding: .15rem .5rem;
+  border-radius: 4px; font-weight: 600; transition: background .1s;
+}
+.pg-opex-add-btn:hover { background: #eef1fb; }
+.pg-opex-subtotal-row td { background: #f8f9fe; font-size: .78rem; }
+
+/* Personnel monthly bar */
+.hc-monthly-bar {
+  margin-top: 1rem; padding: .75rem 1rem;
+  background: #f4f6fb; border-radius: 8px; border: 1px solid #e4e9f5;
+}
+.hc-monthly-title {
+  font-size: .7rem; font-weight: 700; color: #6b7a99;
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: .5rem;
+}
+.hc-monthly-cells { display: flex; gap: .35rem; flex-wrap: wrap; }
+.hc-monthly-cell {
+  flex: 1; min-width: 52px; text-align: center;
+  background: #fff; border-radius: 6px; border: 1px solid #e4e9f5; padding: .35rem .2rem;
+}
+.hc-monthly-label { font-size: .68rem; color: #8b9ab2; margin-bottom: .2rem; }
+.hc-monthly-val { font-size: .78rem; font-weight: 600; color: #1e2433; }
 
 /* "+ Position" button above grid */
 .plan-grid-actions { padding: .5rem 0 .25rem; text-align: right; }
