@@ -578,7 +578,8 @@ function commitCell(input) {
   }
 
   input.value = val !== 0 ? formatInputVal(val) : '';
-  input.closest('td').classList.toggle('pg-dirty', _pendingEdits[key] !== undefined);
+  const cell = input.closest('td') ?? input.closest('.opex-month-cell');
+  cell?.classList.toggle('pg-dirty', _pendingEdits[key] !== undefined);
 
   // Update row total and column total inline
   updateRowTotal(liId);
@@ -594,25 +595,73 @@ function updateRowTotal(liId) {
     const pending = _pendingEdits[`${liId}_${m}`];
     rowTotal += pending !== undefined ? pending : ((entryMap.get(liId) || {})[m] ?? 0);
   }
+  // Grid view
   const cell = document.querySelector(`#pgrow-${liId} .pg-total-cell`);
   if (cell) cell.textContent = fmtCell(rowTotal);
+  // OpEx card view
+  const cardTotal = document.querySelector(`#opex-row-${liId} .opex-row-total`);
+  if (cardTotal) {
+    cardTotal.textContent = rowTotal !== 0 ? fmtCell(rowTotal) : '—';
+    cardTotal.classList.toggle('zero', rowTotal === 0);
+  }
+  // Update group header total and grand total for opex
+  if (_categoryFilter === 'opex') updateOpexGroupTotals();
+}
+
+function updateOpexGroupTotals() {
+  const entryMap = buildEntryMap();
+  const opexItems = _lineItems.filter(li => li.category === 'opex');
+  let grand = 0;
+  // Group by item_id
+  const byItemId = new Map();
+  for (const li of opexItems) {
+    const key = li.item_id || 'opex';
+    if (!byItemId.has(key)) byItemId.set(key, []);
+    byItemId.get(key).push(li);
+  }
+  for (const [itemId, lis] of byItemId) {
+    let groupTotal = 0;
+    for (const li of lis) {
+      for (let m = 1; m <= MONTHS; m++) {
+        const pending = _pendingEdits[`${li.id}_${m}`];
+        groupTotal += pending !== undefined ? pending : ((entryMap.get(li.id) || {})[m] ?? 0);
+      }
+    }
+    grand += groupTotal;
+    // Find and update the group header total — identify by data attribute set on header
+    document.querySelectorAll(`.opex-group-card`).forEach(card => {
+      const addBtn = card.querySelector(`.opex-add-row-btn`);
+      if (addBtn && addBtn.getAttribute('onclick')?.includes(`'${itemId}'`)) {
+        const tot = card.querySelector('.opex-group-total');
+        if (tot) {
+          tot.textContent = groupTotal !== 0 ? fmtCell(groupTotal) : '—';
+          tot.classList.toggle('zero', groupTotal === 0);
+        }
+      }
+    });
+  }
+  const grandEl = document.querySelector('.opex-grand-total strong');
+  if (grandEl) grandEl.textContent = fmtCell(grand);
 }
 
 function updateColTotal(month) {
+  if (_categoryFilter === 'opex') return; // opex card has no column totals
   const entryMap = buildEntryMap();
-  const items = _categoryFilter === 'all' ? _lineItems : _lineItems.filter(li => li.category === _categoryFilter);
+  const items = _lineItems.filter(li => li.category === _categoryFilter);
   let colTotal = 0;
   for (const li of items) {
     const pending = _pendingEdits[`${li.id}_${month}`];
     colTotal += pending !== undefined ? pending : ((entryMap.get(li.id) || {})[month] ?? 0);
   }
   const cells = document.querySelectorAll(`.pg-total-row .pg-cell`);
-  if (cells[month - 1]) cells[month - 1].querySelector('.pg-total-val').textContent = fmtCell(colTotal);
+  const tv = cells[month - 1]?.querySelector('.pg-total-val');
+  if (tv) tv.textContent = fmtCell(colTotal);
 }
 
 function updateGrandTotal() {
+  if (_categoryFilter === 'opex') return;
   const entryMap = buildEntryMap();
-  const items = _categoryFilter === 'all' ? _lineItems : _lineItems.filter(li => li.category === _categoryFilter);
+  const items = _lineItems.filter(li => li.category === _categoryFilter);
   let grand = 0;
   for (const li of items) {
     for (let m = 1; m <= MONTHS; m++) {
