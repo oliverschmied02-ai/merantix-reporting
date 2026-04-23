@@ -66,17 +66,17 @@ describe('aggregateByCategory', () => {
     assert.equal(m.get('revenue')[1], 0);
   });
 
-  it('EBITDA excludes allocation from revenue sum (counts as cost)', () => {
+  it('EBITDA = revenue - personnel - opex (no allocation)', () => {
     const items = [
       { id: 1, category: 'revenue' },
-      { id: 2, category: 'allocation' },
+      { id: 2, category: 'opex' },
     ];
     const entries = [
       { line_item_id: 1, month: 1, amount: 10000 },
       { line_item_id: 2, month: 1, amount: 2000 },
     ];
     const m = aggregateByCategory(items, entries);
-    // EBITDA = 10000 - 0(pers) - 0(opex) - 2000(alloc) = 8000
+    // EBITDA = 10000 - 0(pers) - 2000(opex) = 8000
     assert.equal(m.get('ebitda')[1], 8000);
   });
 });

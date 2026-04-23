@@ -17,6 +17,7 @@ import {
 } from '../lib/db.js';
 import { showToast } from './screen.js';
 import { aggregateByCategory, compareVersions, COMPARE_ROWS } from '../lib/plan-compare.js';
+import { renderPersonnelView, setPersonnelRefresh } from './personnel.js';
 
 // ── Module state ──────────────────────────────────────────────────────
 
@@ -24,7 +25,7 @@ let _versions       = [];
 let _currentVersion = null;   // full version object
 let _lineItems      = [];     // line items for current version
 let _entries        = [];     // plan_entries for current version (all months)
-let _categoryFilter = 'all';  // 'all' | 'revenue' | 'personnel' | 'opex' | 'allocation' | 'other'
+let _categoryFilter = 'all';  // 'all' | 'revenue' | 'personnel' | 'opex' | 'other'
 let _pendingEdits   = {};     // { `${lineItemId}_${month}`: amount }
 let _saving         = false;
 
@@ -33,11 +34,11 @@ let _driverLineItemId = null;
 let _driverEditId     = null;  // null = create, number = editing existing
 let _driverList       = [];    // cached drivers for the open line item
 
-const CATEGORIES = ['all', 'revenue', 'personnel', 'opex', 'allocation', 'other'];
+const CATEGORIES = ['all', 'revenue', 'personnel', 'opex', 'other'];
 const CAT_LABEL  = { all: 'Alle', revenue: 'Umsatz', personnel: 'Personal',
-                     opex: 'OpEx', allocation: 'Allokation', other: 'Sonstige' };
+                     opex: 'OpEx', other: 'Sonstige' };
 const CAT_COLOR  = { revenue: '#16a34a', personnel: '#4f6ef7', opex: '#d97706',
-                     allocation: '#7c3aed', other: '#6b7280', all: '#4f6ef7' };
+                     other: '#6b7280', all: '#4f6ef7' };
 const TYPE_LABEL = { budget: 'Budget', forecast: 'Forecast', scenario: 'Szenario' };
 const MONTHS     = 12;
 
@@ -216,12 +217,23 @@ function renderCategoryFilter() {
     </button>`).join('');
 }
 
-function renderGrid() {
+export function renderGrid() {
   const el = document.getElementById('plan-detail-content');
-  if (!el) return;
+  if (!el || !_currentVersion) return;
+
+  // Personnel tab → headcount view
+  if (_categoryFilter === 'personnel') {
+    const personnelItems = _lineItems.filter(li => li.category === 'personnel');
+    setPersonnelRefresh(async () => {
+      _entries = await getPlanEntries(_currentVersion.id);
+      renderGrid();
+    });
+    renderPersonnelView(el, personnelItems, _currentVersion.year, !!_currentVersion.locked_at);
+    return;
+  }
 
   const items = _categoryFilter === 'all'
-    ? _lineItems
+    ? _lineItems.filter(li => li.category !== 'personnel')
     : _lineItems.filter(li => li.category === _categoryFilter);
 
   if (!items.length) {
@@ -239,8 +251,7 @@ function renderGrid() {
     entryMap.get(e.line_item_id)[e.month] = Number(e.amount);
   }
 
-  const locked   = !!_currentVersion.locked_at;
-  const year     = _currentVersion.year;
+  const locked = !!_currentVersion.locked_at;
 
   el.innerHTML = `
     <div class="plan-grid-wrap">
@@ -249,7 +260,7 @@ function renderGrid() {
           <tr>
             <th class="pg-pos">Position</th>
             <th class="pg-cat">Kategorie</th>
-            ${MONTH_SHORT.map((m, i) => `<th class="pg-month">${m}</th>`).join('')}
+            ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
             <th class="pg-total">Gesamt</th>
             ${!locked ? '<th class="pg-actions"></th>' : ''}
           </tr>
@@ -377,7 +388,8 @@ export function planCellKeydown(e, input) {
 function commitCell(input) {
   const liId  = parseInt(input.dataset.li);
   const month = parseInt(input.dataset.month);
-  const raw   = input.value.trim().replace(',', '.');
+  // Strip de-DE thousand separators (.) then convert decimal comma to dot
+  const raw   = input.value.trim().replace(/\./g, '').replace(',', '.');
   const val   = raw === '' ? 0 : parseFloat(raw);
 
   if (isNaN(val)) {
@@ -909,9 +921,9 @@ function fmtCell(v) {
   return new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(v);
 }
 
+const _inputFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
 function formatInputVal(v) {
-  // Show as plain number for editing, no thousand separators
-  return Number(v).toFixed(2).replace(/\.00$/, '').replace('.', ',');
+  return _inputFmt.format(v);
 }
 
 // ── Revenue driver modal ──────────────────────────────────────────────

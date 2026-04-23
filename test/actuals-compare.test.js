@@ -24,7 +24,7 @@ describe('extractActualsFromPeriods', () => {
     assert.ok(m.has('personnel'));
     assert.ok(m.has('opex'));
     assert.ok(m.has('ebitda'));
-    assert.ok(m.has('allocation'));
+    assert.ok(!m.has('allocation')); // allocation removed
     assert.ok(m.has('other'));
   });
 
@@ -47,9 +47,9 @@ describe('extractActualsFromPeriods', () => {
     assert.equal(m.get('ebitda')[1], 9999);
   });
 
-  it('allocation defaults to 0 for all months', () => {
+  it('does not include allocation key (removed)', () => {
     const m = extractActualsFromPeriods(makePeriods());
-    for (let mo = 1; mo <= 12; mo++) assert.equal(m.get('allocation')[mo], 0);
+    assert.ok(!m.has('allocation'));
   });
 
   it('other defaults to 0 for all months', () => {

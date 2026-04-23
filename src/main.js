@@ -19,6 +19,7 @@ import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopComp
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
 import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonth } from './ui/avp.js';
+import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
   planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
   planCellBlur, planCellKeydown,
@@ -77,6 +78,8 @@ Object.assign(window, {
   submitDriver, driverGenerate, driverDelete, driverEdit,
   // Actuals vs Plan
   avpChangeYear, avpChangeVersion, avpChangeMonth,
+  // Personnel / headcount
+  openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────

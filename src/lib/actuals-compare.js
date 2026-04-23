@@ -89,8 +89,8 @@ export function extractActualsYTD(periodPLs, upToMonth) {
     // EBITDA is not simply summable — re-derive from accumulated revenue/personnel/opex
   }
 
-  // Re-derive YTD EBITDA from components (avoids double-counting allocation)
-  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex'] - (ytd['allocation'] || 0));
+  // Re-derive YTD EBITDA from components
+  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex']);
   return ytd;
 }
 

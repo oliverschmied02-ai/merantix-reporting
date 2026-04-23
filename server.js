@@ -441,6 +441,21 @@ const MIGRATIONS = [
         ADD COLUMN IF NOT EXISTS fee_pct    NUMERIC;
     `,
   },
+  {
+    version: 13,
+    description: 'Drop obsolete plan_entries unique constraint; add country to personnel; tighten category CHECK',
+    sql: `
+      ALTER TABLE plan_entries
+        DROP CONSTRAINT IF EXISTS plan_entries_version_id_item_id_month_year_key;
+      ALTER TABLE plan_personnel_drivers
+        ADD COLUMN IF NOT EXISTS country TEXT;
+      ALTER TABLE plan_line_items
+        DROP CONSTRAINT IF EXISTS plan_line_items_category_check;
+      ALTER TABLE plan_line_items
+        ADD CONSTRAINT plan_line_items_category_check
+        CHECK (category IN ('revenue','personnel','opex','other'));
+    `,
+  },
 ];
 
 async function runMigrations() {
@@ -1144,13 +1159,25 @@ app.put('/api/plan/versions/:id/entries', requireAuth, requireAdmin, async (req,
     if (check[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
 
     for (const e of entries) {
-      await client.query(
-        `INSERT INTO plan_entries (version_id, item_id, month, year, amount, note, updated_by, updated_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
-         ON CONFLICT (version_id, item_id, month, year)
-         DO UPDATE SET amount=$5, note=$6, updated_by=$7, updated_at=NOW()`,
-        [versionId, e.item_id, e.month, e.year, e.amount ?? 0, e.note ?? null, req.user.id]
-      );
+      if (e.line_item_id) {
+        // Line-item-scoped entry — use the partial unique index
+        await client.query(
+          `INSERT INTO plan_entries
+             (version_id, line_item_id, item_id, month, year, amount, note, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+           ON CONFLICT (version_id, line_item_id, month) WHERE line_item_id IS NOT NULL
+           DO UPDATE SET amount=$6, note=$7, updated_by=$8, updated_at=NOW()`,
+          [versionId, e.line_item_id, e.item_id, e.month, e.year, e.amount ?? 0, e.note ?? null, req.user.id]
+        );
+      } else {
+        // Legacy entry without line_item_id — plain insert
+        await client.query(
+          `INSERT INTO plan_entries (version_id, item_id, month, year, amount, note, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+           ON CONFLICT DO NOTHING`,
+          [versionId, e.item_id, e.month, e.year, e.amount ?? 0, e.note ?? null, req.user.id]
+        );
+      }
     }
     await client.query(
       'UPDATE plan_versions SET updated_by=$1, updated_at=NOW() WHERE id=$2',
@@ -1169,7 +1196,7 @@ app.put('/api/plan/versions/:id/entries', requireAuth, requireAdmin, async (req,
 
 // ── PLANNING: LINE ITEMS ──────────────────────────────────────────────
 
-const VALID_CATEGORIES = new Set(['revenue','personnel','opex','allocation','other']);
+const VALID_CATEGORIES = new Set(['revenue','personnel','opex','other']);
 
 // List line items for a version, optionally filtered by category
 app.get('/api/plan/versions/:id/line-items', requireAuth, async (req, res) => {
@@ -1662,7 +1689,7 @@ app.post('/api/plan/line-items/:liId/personnel', requireAuth, requireAdmin, asyn
   try {
     const lineItemId = parseInt(req.params.liId);
     const {
-      employee_name, role_title, department, is_filled = true,
+      employee_name, role_title, department, country, is_filled = true,
       start_date, end_date,
       annual_gross_salary, payroll_burden_rate = 0,
       salary_increase_date, annual_gross_salary_post_increase,
@@ -1690,14 +1717,14 @@ app.post('/api/plan/line-items/:liId/personnel', requireAuth, requireAdmin, asyn
 
     const { rows } = await pool.query(
       `INSERT INTO plan_personnel_drivers
-         (line_item_id, employee_name, role_title, department, is_filled,
+         (line_item_id, employee_name, role_title, department, country, is_filled,
           start_date, end_date, annual_gross_salary, payroll_burden_rate,
           salary_increase_date, annual_gross_salary_post_increase,
           annual_bonus, bonus_month, notes, created_by, updated_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)
        RETURNING *`,
       [
-        lineItemId, employee_name, role_title || null, department || null, is_filled,
+        lineItemId, employee_name, role_title || null, department || null, country || null, is_filled,
         start_date || null, end_date || null,
         annual_gross_salary, payroll_burden_rate,
         salary_increase_date || null, annual_gross_salary_post_increase || null,
@@ -1731,21 +1758,22 @@ app.patch('/api/plan/line-items/:liId/personnel/:id', requireAuth, requireAdmin,
          employee_name         = COALESCE($1,  employee_name),
          role_title            = COALESCE($2,  role_title),
          department            = COALESCE($3,  department),
-         is_filled             = COALESCE($4,  is_filled),
-         start_date            = COALESCE($5,  start_date),
-         end_date              = COALESCE($6,  end_date),
-         annual_gross_salary   = COALESCE($7,  annual_gross_salary),
-         payroll_burden_rate   = COALESCE($8,  payroll_burden_rate),
-         salary_increase_date  = COALESCE($9,  salary_increase_date),
-         annual_gross_salary_post_increase = COALESCE($10, annual_gross_salary_post_increase),
-         annual_bonus          = COALESCE($11, annual_bonus),
-         bonus_month           = COALESCE($12, bonus_month),
-         notes                 = COALESCE($13, notes),
-         updated_by            = $14,
+         country               = COALESCE($4,  country),
+         is_filled             = COALESCE($5,  is_filled),
+         start_date            = COALESCE($6,  start_date),
+         end_date              = COALESCE($7,  end_date),
+         annual_gross_salary   = COALESCE($8,  annual_gross_salary),
+         payroll_burden_rate   = COALESCE($9,  payroll_burden_rate),
+         salary_increase_date  = COALESCE($10, salary_increase_date),
+         annual_gross_salary_post_increase = COALESCE($11, annual_gross_salary_post_increase),
+         annual_bonus          = COALESCE($12, annual_bonus),
+         bonus_month           = COALESCE($13, bonus_month),
+         notes                 = COALESCE($14, notes),
+         updated_by            = $15,
          updated_at            = NOW()
-       WHERE id = $15 RETURNING *`,
+       WHERE id = $16 RETURNING *`,
       [
-        f.employee_name ?? null, f.role_title ?? null, f.department ?? null,
+        f.employee_name ?? null, f.role_title ?? null, f.department ?? null, f.country ?? null,
         f.is_filled ?? null, f.start_date ?? null, f.end_date ?? null,
         f.annual_gross_salary ?? null, f.payroll_burden_rate ?? null,
         f.salary_increase_date ?? null, f.annual_gross_salary_post_increase ?? null,
