@@ -63,7 +63,7 @@ export function activeMonthWeight(year, start, end) {
  * Months outside the driver's date range produce no entry (not zero entries).
  *
  * @param {object} driver
- * @param {string}    driver.driver_type   'annual_fee' | 'monthly_flat' | 'one_off'
+ * @param {string}    driver.driver_type   'annual_fee' | 'monthly_flat' | 'one_off' | 'quarterly_flat'
  * @param {number}    driver.amount
  * @param {Date|null} driver.start_date
  * @param {Date|null} driver.end_date
@@ -101,6 +101,23 @@ export function spreadDriver(driver, planYear) {
       if (frac <= 0) continue;
       // For monthly_flat, partial months receive a prorated share of the monthly rate
       result.push({ month: m, year: planYear, amount: round2(Number(amount) * frac) });
+    }
+    return result;
+  }
+
+  // quarterly_flat: place amount in the first active month of each calendar quarter
+  if (driver_type === 'quarterly_flat') {
+    const quarterStarts = [1, 4, 7, 10]; // Jan, Apr, Jul, Oct
+    for (const qStart of quarterStarts) {
+      const qEnd = qStart + 2; // inclusive last month of quarter
+      // Find the first month within this quarter that overlaps the effective range
+      for (let m = qStart; m <= qEnd; m++) {
+        const frac = monthFraction(planYear, m, effectiveStart, effectiveEnd);
+        if (frac > 0) {
+          result.push({ month: m, year: planYear, amount: Number(amount) });
+          break;
+        }
+      }
     }
     return result;
   }

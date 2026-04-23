@@ -410,6 +410,83 @@ export async function deletePersonnelDriver(lineItemId, driverId) {
   if (!res.ok) throw new Error((await res.json()).error);
 }
 
+// ── Cost Allocation API ───────────────────────────────────────────────
+
+export async function getAllocationRules(versionId) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/allocation-rules`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function getAllocationRule(id) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${id}`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function createAllocationRule(versionId, data) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/allocation-rules`, {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function updateAllocationRule(id, patch) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${id}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function deleteAllocationRule(id) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
+export async function setAllocationTargets(ruleId, targets) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${ruleId}/targets`, {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ targets }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function generateAllocation(ruleId, dryRun = false) {
+  const url = `/api/plan/allocation-rules/${ruleId}/generate${dryRun ? '?dry_run=true' : ''}`;
+  const res = await apiFetch(url, { method: 'POST' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function saveManualAllocation(ruleId, targetId, amounts) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${ruleId}/targets/${targetId}/manual`, {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ amounts }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function getAllocationResults(ruleId) {
+  const res = await apiFetch(`/api/plan/allocation-rules/${ruleId}/results`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function generateOpexEntries(lineItemId, dryRun = false) {
+  const url = `/api/plan/line-items/${lineItemId}/generate-opex${dryRun ? '?dry_run=true' : ''}`;
+  const res = await apiFetch(url, { method: 'POST' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
 export async function generatePersonnelEntries(lineItemId, dryRun = false) {
   const url = `/api/plan/line-items/${lineItemId}/generate-personnel${dryRun ? '?dry_run=true' : ''}`;
   const res = await apiFetch(url, { method: 'POST' });

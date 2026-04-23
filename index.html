@@ -160,6 +160,14 @@
             <span class="sb-nav-icon">📊</span>
             <span class="sb-nav-label">P&amp;L Statement</span>
           </button>
+          <button class="sb-nav-item" id="nav-plan" onclick="setMainView('plan-screen')">
+            <span class="sb-nav-icon">📋</span>
+            <span class="sb-nav-label">Planung</span>
+          </button>
+          <button class="sb-nav-item" id="nav-avp" onclick="setMainView('avp-screen')">
+            <span class="sb-nav-icon">⚡</span>
+            <span class="sb-nav-label">Ist vs. Plan</span>
+          </button>
           <button class="sb-nav-item" id="nav-files" onclick="setMainView('files-screen')">
             <span class="sb-nav-icon">🗂</span>
             <span class="sb-nav-label">Dateien</span>
@@ -246,6 +254,162 @@
             <input type="file" id="file-input-extra" accept=".zip" style="display:none" onchange="handleFileInput(this)" />
           </div>
         </div><!-- /files-screen -->
+
+        <!-- ═══ PLANNING ═══ -->
+        <div id="plan-screen" style="display:none;flex:1;min-height:0;flex-direction:column">
+
+          <!-- Versions list view -->
+          <div id="plan-versions-view">
+            <div class="top-bar">
+              <div>
+                <div class="top-title">Planung</div>
+                <div class="top-company">Planversionen &amp; Budget</div>
+              </div>
+              <div style="margin-left:auto;display:flex;gap:.5rem">
+                <button class="btn-sm" onclick="openCompareScreen()">⇄ Vergleichen</button>
+                <button class="btn-plan-primary" onclick="openCreateVersion()">+ Neue Version</button>
+              </div>
+            </div>
+            <div style="padding:1.5rem" id="plan-versions-list">
+              <div class="plan-loading">Laden…</div>
+            </div>
+          </div>
+
+          <!-- Scenario comparison view -->
+          <div id="plan-compare-view" style="display:none;flex-direction:column;flex:1;min-height:0">
+            <div class="top-bar">
+              <button class="plan-back-btn" onclick="planBackToList()">← Versionen</button>
+              <div style="margin-left:.75rem">
+                <div class="top-title">Szenariovergleich</div>
+                <div class="top-company">Zwei Planversionen gegenüberstellen</div>
+              </div>
+              <div class="top-sep"></div>
+              <span class="lbl">Version A</span>
+              <select id="cmp-sel-a" class="ctrl" onchange="runComparison()" style="min-width:200px"></select>
+              <span class="lbl" style="padding:0 .25rem">vs.</span>
+              <select id="cmp-sel-b" class="ctrl" onchange="runComparison()" style="min-width:200px"></select>
+            </div>
+            <div class="plan-grid-container" id="plan-compare-content">
+              <div class="plan-empty">Wähle zwei Versionen zum Vergleich.</div>
+            </div>
+          </div>
+
+          <!-- Version detail view -->
+          <div id="plan-detail-view" style="display:none;flex-direction:column;flex:1;min-height:0">
+            <div class="top-bar" id="plan-detail-header"></div>
+            <div style="padding:.6rem 1.5rem;background:#fff;border-bottom:1px solid #e4e9f5">
+              <div class="seg-ctrl" id="plan-category-filter"></div>
+            </div>
+            <div class="plan-grid-container" id="plan-detail-content"></div>
+          </div>
+
+        </div><!-- /plan-screen -->
+
+        <!-- ═══ PLAN: Create Version Modal ═══ -->
+        <div id="plan-create-modal" style="display:none;position:fixed;inset:0;background:rgba(30,36,51,.45);z-index:400;align-items:center;justify-content:center">
+          <div class="plan-modal">
+            <div class="plan-modal-header">
+              <div class="plan-modal-title">Neue Planversion</div>
+              <button class="drill-close" onclick="closeCreateVersion()">✕</button>
+            </div>
+            <div class="plan-modal-body">
+              <div class="plan-field">
+                <label class="plan-label">Name</label>
+                <input id="pcm-name" class="plan-input" placeholder="z.B. Budget 2026" autocomplete="off"/>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                <div class="plan-field">
+                  <label class="plan-label">Jahr</label>
+                  <input id="pcm-year" class="plan-input" type="number" min="2020" max="2099"/>
+                </div>
+                <div class="plan-field">
+                  <label class="plan-label">Typ</label>
+                  <select id="pcm-type" class="plan-input ctrl">
+                    <option value="budget">Budget</option>
+                    <option value="forecast">Forecast</option>
+                    <option value="scenario">Szenario</option>
+                  </select>
+                </div>
+              </div>
+              <div class="plan-field">
+                <label class="plan-label">Notizen (optional)</label>
+                <textarea id="pcm-notes" class="plan-input" rows="2" placeholder="Annahmen, Kontext…" style="resize:vertical"></textarea>
+              </div>
+              <div id="pcm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
+            </div>
+            <div class="plan-modal-footer">
+              <button class="btn-sm" onclick="closeCreateVersion()">Abbrechen</button>
+              <button class="btn-plan-primary" id="pcm-submit" onclick="submitCreateVersion()">Erstellen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ PLAN: Add Line Item Modal ═══ -->
+        <div id="plan-lineitem-modal" style="display:none;position:fixed;inset:0;background:rgba(30,36,51,.45);z-index:400;align-items:center;justify-content:center">
+          <div class="plan-modal">
+            <div class="plan-modal-header">
+              <div class="plan-modal-title">Position hinzufügen</div>
+              <button class="drill-close" onclick="closeLineItemModal()">✕</button>
+            </div>
+            <div class="plan-modal-body">
+              <div class="plan-field">
+                <label class="plan-label">Bezeichnung</label>
+                <input id="plm-label" class="plan-input" placeholder="z.B. Büromiete" autocomplete="off"/>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                <div class="plan-field">
+                  <label class="plan-label">Kategorie</label>
+                  <select id="plm-category" class="plan-input ctrl" onchange="document.getElementById('plm-itemid').value=this.value">
+                    <option value="revenue">Umsatz</option>
+                    <option value="personnel">Personal</option>
+                    <option value="opex" selected>OpEx</option>
+                    <option value="allocation">Allokation</option>
+                    <option value="other">Sonstige</option>
+                  </select>
+                </div>
+                <div class="plan-field">
+                  <label class="plan-label">P&amp;L-Zuordnung (item_id)</label>
+                  <input id="plm-itemid" class="plan-input" placeholder="opex" autocomplete="off"/>
+                </div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                <div class="plan-field">
+                  <label class="plan-label">Gesellschaft (optional)</label>
+                  <input id="plm-entity" class="plan-input" placeholder="z.B. Merantix AG" autocomplete="off"/>
+                </div>
+                <div class="plan-field">
+                  <label class="plan-label">Fonds-Referenz (optional)</label>
+                  <input id="plm-fund" class="plan-input" placeholder="z.B. Fund I" autocomplete="off"/>
+                </div>
+              </div>
+              <div id="plm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
+            </div>
+            <div class="plan-modal-footer">
+              <button class="btn-sm" onclick="closeLineItemModal()">Abbrechen</button>
+              <button class="btn-plan-primary" id="plm-submit" onclick="submitAddLineItem()">Hinzufügen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- ═══ IST vs. PLAN ═══ -->
+        <div id="avp-screen" style="display:none;flex:1;min-height:0;flex-direction:column">
+          <div class="top-bar">
+            <div>
+              <div class="top-title">Ist vs. Plan</div>
+              <div class="top-company" id="avp-top-sub">Abweichungsanalyse</div>
+            </div>
+            <div class="top-sep"></div>
+            <span class="lbl">Jahr</span>
+            <select id="avp-year-sel" class="ctrl" onchange="avpChangeYear()"></select>
+            <span class="lbl">Planversion</span>
+            <select id="avp-version-sel" class="ctrl" style="min-width:200px" onchange="avpChangeVersion()"></select>
+            <span class="lbl">bis</span>
+            <select id="avp-month-sel" class="ctrl" onchange="avpChangeMonth()"></select>
+          </div>
+          <div class="plan-grid-container" id="avp-content">
+            <div class="plan-empty">Bitte Jahr und Planversion auswählen.</div>
+          </div>
+        </div><!-- /avp-screen -->
 
       </div><!-- /app-main -->
     </div><!-- /app-shell -->

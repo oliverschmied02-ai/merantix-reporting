@@ -1,7 +1,7 @@
 import './styles/main.css';
 import { loadAppState, loadKpiOrder } from './lib/storage.js';
 import { APP, resetAPP } from './state.js';
-import { setScreen, setMainView, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
+import { setScreen, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
 import { buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV, exportPLPrint } from './ui/pl-table.js';
 import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
 import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
@@ -18,8 +18,22 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
+import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonth } from './ui/avp.js';
+import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
+  planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
+  planCellBlur, planCellKeydown,
+  planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
+  planLockVersion, planDeleteVersion,
+  openCompareScreen, runComparison } from './ui/plan.js';
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
+
+// ── Navigation wrapper — triggers screen-specific data loads ─────────
+function setMainView(name) {
+  setScreen(name);
+  if (name === 'plan-screen') _openPlanScreen();
+  if (name === 'avp-screen')  _openAvpScreen();
+}
 
 // ── Expose globals ────────────────────────────────────────────────────
 Object.assign(window, {
@@ -47,6 +61,15 @@ Object.assign(window, {
   setUserRole,
   renderDataStats,
   changeYear, renderAuditLog, auditPage,
+  // Planning
+  openCreateVersion, closeCreateVersion, submitCreateVersion,
+  planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
+  planCellBlur, planCellKeydown,
+  planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
+  planLockVersion, planDeleteVersion,
+  openCompareScreen, runComparison,
+  // Actuals vs Plan
+  avpChangeYear, avpChangeVersion, avpChangeMonth,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────

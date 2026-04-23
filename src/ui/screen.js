@@ -23,8 +23,16 @@ export function setScreen(name) {
     ['pl-screen', 'files-screen'].forEach(id => {
       document.getElementById(id).style.display = id === name ? 'block' : 'none';
     });
+    // Plan and avp screens use flex layout
+    const planEl = document.getElementById('plan-screen');
+    if (planEl) planEl.style.display = name === 'plan-screen' ? 'flex' : 'none';
+    const avpEl = document.getElementById('avp-screen');
+    if (avpEl) avpEl.style.display = name === 'avp-screen' ? 'flex' : 'none';
+
     document.getElementById('nav-pl').classList.toggle('active', name === 'pl-screen');
     document.getElementById('nav-files').classList.toggle('active', name === 'files-screen');
+    document.getElementById('nav-plan')?.classList.toggle('active', name === 'plan-screen');
+    document.getElementById('nav-avp')?.classList.toggle('active', name === 'avp-screen');
     if (name === 'files-screen') renderFilesScreen();
   }
 }
