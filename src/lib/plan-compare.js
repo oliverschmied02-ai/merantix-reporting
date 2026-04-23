@@ -14,14 +14,14 @@
  */
 
 export const COMPARE_ROWS = [
-  { key: 'revenue',   label: 'Umsatz',          sign: +1 },
-  { key: 'personnel', label: 'Personalaufwand',  sign: -1 },
-  { key: 'opex',      label: 'OpEx',             sign: -1 },
-  { key: 'ebitda',    label: 'EBITDA',           sign: null, computed: true },
-  { key: 'other',     label: 'Sonstige',         sign: -1 },
+  { key: 'revenue',      label: 'Umsatz',          sign: +1 },
+  { key: 'personnel',    label: 'Personalaufwand',  sign: -1 },
+  { key: 'opex',         label: 'OpEx',             sign: -1 },
+  { key: 'ebitda',       label: 'EBITDA',           sign: null, computed: true },
+  { key: 'depreciation', label: 'Abschreibungen',   sign: -1 },
 ];
 
-const COST_CATEGORIES = new Set(['personnel', 'opex', 'other']);
+const COST_CATEGORIES = new Set(['personnel', 'opex', 'depreciation']);
 
 /**
  * Build a monthly totals map from line items + entries for one version.
@@ -47,7 +47,7 @@ export function aggregateByCategory(lineItems, entries) {
     result.get(cat)[e.month] = (result.get(cat)[e.month] || 0) + Number(e.amount);
   }
 
-  // Compute EBITDA = revenue - personnel - opex
+  // Compute EBITDA = revenue - personnel - opex (before depreciation, by definition)
   for (let m = 1; m <= 12; m++) {
     result.get('ebitda')[m] =
       (result.get('revenue')[m]   || 0) -

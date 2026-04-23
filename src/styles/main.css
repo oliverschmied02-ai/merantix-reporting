@@ -923,22 +923,29 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .pg-input::placeholder { color: #d1d8e8; }
 .pg-editable.pg-dirty .pg-input { color: #d97706; }
 
-/* Delete button */
-.pg-actions-cell { width: 36px; padding: .2rem .4rem !important; }
+/* Action buttons — always visible when .pg-actions-visible */
+.pg-actions-cell { width: 64px; padding: .2rem .4rem !important; white-space: nowrap; }
 .pg-del-btn {
-  display: none; background: none; border: none; color: #dc2626;
+  background: none; border: none; color: #dc2626;
   font-size: .75rem; cursor: pointer; padding: .2rem .35rem;
-  border-radius: 5px; transition: background .1s;
+  border-radius: 5px; transition: background .1s; opacity: .55;
 }
-.pg-row:hover .pg-del-btn { display: inline-block; }
-.pg-del-btn:hover { background: #fee2e2; }
+.pg-del-btn:hover { background: #fee2e2; opacity: 1; }
 .pg-driver-btn {
-  display: none; background: none; border: none; color: #4f6ef7;
-  font-size: .75rem; cursor: pointer; padding: .2rem .35rem;
-  border-radius: 5px; transition: background .1s;
+  background: none; border: 1px solid #c7d0f7; color: #4f6ef7;
+  font-size: .75rem; cursor: pointer; padding: .2rem .4rem;
+  border-radius: 5px; transition: background .1s; opacity: .8;
 }
-.pg-row:hover .pg-driver-btn { display: inline-block; }
-.pg-driver-btn:hover { background: #eef1fb; }
+.pg-driver-btn:hover { background: #eef1fb; opacity: 1; }
+
+/* "+ Position" button above grid */
+.plan-grid-actions { padding: .5rem 0 .25rem; text-align: right; }
+.btn-plan-add {
+  background: #4f6ef7; color: #fff; border: none; border-radius: 6px;
+  padding: .35rem .9rem; font-size: .8rem; cursor: pointer; font-weight: 600;
+  transition: background .15s;
+}
+.btn-plan-add:hover { background: #3b55e0; }
 
 /* Total row */
 .pg-total-row td {

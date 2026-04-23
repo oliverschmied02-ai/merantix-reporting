@@ -66,7 +66,7 @@ describe('aggregateByCategory', () => {
     assert.equal(m.get('revenue')[1], 0);
   });
 
-  it('EBITDA = revenue - personnel - opex (no allocation)', () => {
+  it('EBITDA = revenue - personnel - opex (no depreciation)', () => {
     const items = [
       { id: 1, category: 'revenue' },
       { id: 2, category: 'opex' },

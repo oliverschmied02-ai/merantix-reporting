@@ -230,8 +230,8 @@ const MIGRATIONS = [
         version_id   INTEGER     NOT NULL REFERENCES plan_versions(id) ON DELETE CASCADE,
         label        TEXT        NOT NULL,
         item_id      TEXT        NOT NULL,
-        category     TEXT        NOT NULL DEFAULT 'other'
-                     CHECK (category IN ('revenue','personnel','opex','allocation','other')),
+        category     TEXT        NOT NULL DEFAULT 'depreciation'
+                     CHECK (category IN ('revenue','personnel','opex','allocation','other','depreciation')),
         entity       TEXT,
         fund_ref     TEXT,
         department   TEXT,
@@ -455,6 +455,18 @@ const MIGRATIONS = [
       ALTER TABLE plan_line_items
         ADD CONSTRAINT plan_line_items_category_check
         CHECK (category IN ('revenue','personnel','opex','other'));
+    `,
+  },
+  {
+    version: 14,
+    description: 'Replace other category with depreciation',
+    sql: `
+      UPDATE plan_line_items SET category = 'depreciation' WHERE category = 'other';
+      ALTER TABLE plan_line_items
+        DROP CONSTRAINT IF EXISTS plan_line_items_category_check;
+      ALTER TABLE plan_line_items
+        ADD CONSTRAINT plan_line_items_category_check
+        CHECK (category IN ('revenue','personnel','opex','depreciation'));
     `,
   },
 ];
@@ -1197,7 +1209,7 @@ app.put('/api/plan/versions/:id/entries', requireAuth, requireAdmin, async (req,
 
 // ── PLANNING: LINE ITEMS ──────────────────────────────────────────────
 
-const VALID_CATEGORIES = new Set(['revenue','personnel','opex','other']);
+const VALID_CATEGORIES = new Set(['revenue','personnel','opex','depreciation']);
 
 // List line items for a version, optionally filtered by category
 app.get('/api/plan/versions/:id/line-items', requireAuth, async (req, res) => {

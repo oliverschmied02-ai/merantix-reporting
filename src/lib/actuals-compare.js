@@ -23,12 +23,11 @@ import { COMPARE_ROWS } from './plan-compare.js';
 
 // Which P&L computed keys map to which plan categories
 const CATEGORY_TO_PL_KEY = {
-  revenue:    'revenue',
-  personnel:  'personnel',
-  opex:       'opex',
-  // allocation has no direct P&L account group — returns 0
+  revenue:      'revenue',
+  personnel:    'personnel',
+  opex:         'opex',
+  depreciation: 'depreciation',
   // ebitda is handled specially below
-  // other has no direct mapping — returns 0
 };
 
 /**
@@ -60,8 +59,6 @@ export function extractActualsFromPeriods(periodPLs) {
 
     // EBITDA: use the P&L engine's own value (honours custom formulas)
     result.get('ebitda')[month] = round2(computed['ebitda'] ?? 0);
-
-    // allocation and other default to 0 — left in the map for consistent shape
   }
 
   return result;

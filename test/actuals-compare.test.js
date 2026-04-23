@@ -24,8 +24,8 @@ describe('extractActualsFromPeriods', () => {
     assert.ok(m.has('personnel'));
     assert.ok(m.has('opex'));
     assert.ok(m.has('ebitda'));
-    assert.ok(!m.has('allocation')); // allocation removed
-    assert.ok(m.has('other'));
+    assert.ok(m.has('depreciation'));
+    assert.ok(!m.has('other'));
   });
 
   it('maps revenue correctly for month 1', () => {
@@ -52,9 +52,9 @@ describe('extractActualsFromPeriods', () => {
     assert.ok(!m.has('allocation'));
   });
 
-  it('other defaults to 0 for all months', () => {
+  it('depreciation defaults to 0 for all months when not in periodPLs', () => {
     const m = extractActualsFromPeriods(makePeriods());
-    for (let mo = 1; mo <= 12; mo++) assert.equal(m.get('other')[mo], 0);
+    for (let mo = 1; mo <= 12; mo++) assert.equal(m.get('depreciation')[mo], 0);
   });
 
   it('rounds to 2 decimal places', () => {

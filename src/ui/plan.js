@@ -25,7 +25,7 @@ let _versions       = [];
 let _currentVersion = null;   // full version object
 let _lineItems      = [];     // line items for current version
 let _entries        = [];     // plan_entries for current version (all months)
-let _categoryFilter = 'all';  // 'all' | 'revenue' | 'personnel' | 'opex' | 'other'
+let _categoryFilter = 'revenue';  // 'revenue' | 'personnel' | 'opex' | 'depreciation'
 let _pendingEdits   = {};     // { `${lineItemId}_${month}`: amount }
 let _saving         = false;
 
@@ -34,11 +34,11 @@ let _driverLineItemId = null;
 let _driverEditId     = null;  // null = create, number = editing existing
 let _driverList       = [];    // cached drivers for the open line item
 
-const CATEGORIES = ['all', 'revenue', 'personnel', 'opex', 'other'];
-const CAT_LABEL  = { all: 'Alle', revenue: 'Umsatz', personnel: 'Personal',
-                     opex: 'OpEx', other: 'Sonstige' };
+const CATEGORIES = ['revenue', 'personnel', 'opex', 'depreciation'];
+const CAT_LABEL  = { revenue: 'Umsatz', personnel: 'Personal',
+                     opex: 'OpEx', depreciation: 'Abschreibungen' };
 const CAT_COLOR  = { revenue: '#16a34a', personnel: '#4f6ef7', opex: '#d97706',
-                     other: '#6b7280', all: '#4f6ef7' };
+                     depreciation: '#9333ea' };
 const TYPE_LABEL = { budget: 'Budget', forecast: 'Forecast', scenario: 'Szenario' };
 const MONTHS     = 12;
 
@@ -136,10 +136,10 @@ export async function submitCreateVersion() {
 
   btn.disabled = true; btn.textContent = '…';
   try {
-    await createPlanVersion(name, year, type, notes || null);
+    const newVersion = await createPlanVersion(name, year, type, notes || null);
     closeCreateVersion();
     showToast('Version erstellt');
-    await loadVersions();
+    await planOpenVersion(newVersion.id);
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -169,7 +169,7 @@ export async function planOpenVersion(id) {
     _currentVersion = versionData;
     _lineItems      = lineItems;
     _entries        = entries;
-    _categoryFilter = 'all';
+    _categoryFilter = 'revenue';
 
     renderDetailHeader();
     renderCategoryFilter();
@@ -196,7 +196,6 @@ function renderDetailHeader() {
         </div>
       </div>
       <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        ${!locked ? `<button class="btn-sm" onclick="planAddLineItem()">+ Position</button>` : ''}
         ${!locked ? `<button class="btn-plan-save hidden" id="plan-save-btn" onclick="planSaveEdits()">Speichern</button>` : ''}
         ${!locked
           ? `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔒 Sperren</button>`
@@ -221,28 +220,21 @@ export function renderGrid() {
   const el = document.getElementById('plan-detail-content');
   if (!el || !_currentVersion) return;
 
-  // Personnel tab → headcount view
+  // Personnel tab → headcount view (auto-ensures standard line items exist)
   if (_categoryFilter === 'personnel') {
-    const personnelItems = _lineItems.filter(li => li.category === 'personnel');
     setPersonnelRefresh(async () => {
       _entries = await getPlanEntries(_currentVersion.id);
       renderGrid();
     });
-    renderPersonnelView(el, personnelItems, _currentVersion.year, !!_currentVersion.locked_at);
+    _ensurePersonnelLineItems().then(() => {
+      const personnelItems = _lineItems.filter(li => li.category === 'personnel');
+      renderPersonnelView(el, personnelItems, _currentVersion.year, !!_currentVersion.locked_at);
+    });
     return;
   }
 
-  const items = _categoryFilter === 'all'
-    ? _lineItems.filter(li => li.category !== 'personnel')
-    : _lineItems.filter(li => li.category === _categoryFilter);
-
-  if (!items.length) {
-    el.innerHTML = `<div class="plan-empty">
-      Keine Positionen ${_categoryFilter !== 'all' ? 'in dieser Kategorie' : ''}.
-      ${!_currentVersion.locked_at ? `<a href="#" onclick="planAddLineItem();return false">Position hinzufügen</a>.` : ''}
-    </div>`;
-    return;
-  }
+  const items = _lineItems.filter(li => li.category === _categoryFilter);
+  const locked = !!_currentVersion.locked_at;
 
   // Build a lookup: lineItemId → { month → amount }
   const entryMap = new Map();
@@ -251,15 +243,23 @@ export function renderGrid() {
     entryMap.get(e.line_item_id)[e.month] = Number(e.amount);
   }
 
-  const locked = !!_currentVersion.locked_at;
+  const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem()">+ Position</button>` : '';
+
+  if (!items.length) {
+    el.innerHTML = `<div class="plan-empty">
+      Keine Positionen in dieser Kategorie.
+      ${addBtn}
+    </div>`;
+    return;
+  }
 
   el.innerHTML = `
     <div class="plan-grid-wrap">
+      ${addBtn ? `<div class="plan-grid-actions">${addBtn}</div>` : ''}
       <table class="plan-grid">
         <thead>
           <tr>
             <th class="pg-pos">Position</th>
-            <th class="pg-cat">Kategorie</th>
             ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
             <th class="pg-total">Gesamt</th>
             ${!locked ? '<th class="pg-actions"></th>' : ''}
@@ -273,6 +273,24 @@ export function renderGrid() {
         </tfoot>
       </table>
     </div>`;
+}
+
+async function _ensurePersonnelLineItems() {
+  const existing = _lineItems.filter(li => li.category === 'personnel');
+  const hasWages  = existing.some(li => li.item_id === 'personnel_wages');
+  const hasSocial = existing.some(li => li.item_id === 'personnel_social');
+
+  const toCreate = [];
+  if (!hasWages)  toCreate.push({ label: 'Löhne & Gehälter',    item_id: 'personnel_wages' });
+  if (!hasSocial) toCreate.push({ label: 'Sozialaufwendungen',  item_id: 'personnel_social' });
+
+  for (const p of toCreate) {
+    const li = await createPlanLineItem(_currentVersion.id, {
+      label: p.label, category: 'personnel', item_id: p.item_id,
+      sort_order: _lineItems.length,
+    });
+    _lineItems.push(li);
+  }
 }
 
 function gridRow(li, monthAmounts, locked) {
@@ -314,13 +332,10 @@ function gridRow(li, monthAmounts, locked) {
         ${li.entity ? `<span class="pg-li-tag">${esc(li.entity)}</span>` : ''}
         ${li.fund_ref ? `<span class="pg-li-tag pg-li-fund">${esc(li.fund_ref)}</span>` : ''}
       </td>
-      <td class="pg-cat-cell">
-        <span class="pg-cat-badge" style="background:${color}20;color:${color}">${CAT_LABEL[cat] ?? cat}</span>
-      </td>
       ${cells.join('')}
       <td class="pg-total-cell">${fmtCell(rowTotal)}</td>
-      ${!locked ? `<td class="pg-actions-cell">
-        ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue Drivers">⚙</button>` : ''}
+      ${!locked ? `<td class="pg-actions-cell pg-actions-visible">
+        ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue-Treiber konfigurieren">⚙</button>` : ''}
         <button class="pg-del-btn" onclick="planDeleteLineItem(${li.id})" title="Position löschen">✕</button>
       </td>` : ''}
     </tr>`;
@@ -341,7 +356,6 @@ function gridTotalRow(items, entryMap, locked) {
   return `
     <tr class="pg-total-row">
       <td class="pg-pos-cell" style="font-weight:700">Summe</td>
-      <td></td>
       ${colTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
       <td class="pg-total-cell pg-grand">${fmtCell(grandTotal)}</td>
       ${!locked ? '<td></td>' : ''}
@@ -518,16 +532,16 @@ let _plmDriverMode = 'management_fee'; // 'management_fee' | 'one_off' | 'manual
 export function planAddLineItem() {
   const m = document.getElementById('plan-lineitem-modal');
   if (!m) return;
+  const defaultCat = ['revenue','opex','depreciation'].includes(_categoryFilter) ? _categoryFilter : 'opex';
   m.style.display = 'flex';
   document.getElementById('plm-label').value    = '';
-  document.getElementById('plm-category').value = 'opex';
+  document.getElementById('plm-category').value = defaultCat;
   document.getElementById('plm-entity').value   = '';
   document.getElementById('plm-fund').value     = '';
-  document.getElementById('plm-itemid').value   = 'opex';
+  document.getElementById('plm-itemid').value   = defaultCat;
   document.getElementById('plm-error').textContent = '';
-  document.getElementById('plm-driver-section').style.display = 'none';
   _plmDriverMode = 'management_fee';
-  plmDriverMode('management_fee');
+  plmCategoryChanged();
 }
 
 export function plmCategoryChanged() {
