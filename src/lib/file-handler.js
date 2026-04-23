@@ -20,7 +20,12 @@ export function mergeTransactions(newTxns, fileId) {
 
 export function refreshYears() {
   const years = new Set();
-  for (const t of APP.allTransactions) if (t.wjYear) years.add(t.wjYear);
+  // Derive from file metadata when available (transactions may be partial due to lazy-loading)
+  if (APP.loadedFiles.length > 0) {
+    for (const f of APP.loadedFiles) for (const y of (f.years || [])) years.add(y);
+  } else {
+    for (const t of APP.allTransactions) if (t.wjYear) years.add(t.wjYear);
+  }
   APP.years = [...years].sort();
   const ySel = document.getElementById('year-sel');
   if (!ySel) return;
