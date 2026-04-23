@@ -378,3 +378,42 @@ export async function generateFromDrivers(lineItemId, dryRun = false) {
   if (!res.ok) throw new Error(json.error);
   return json;
 }
+
+// ── Planning: personnel drivers ───────────────────────────────────────
+
+export async function getPersonnelDrivers(lineItemId) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/personnel`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function createPersonnelDriver(lineItemId, data) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/personnel`, {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function updatePersonnelDriver(lineItemId, driverId, patch) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/personnel/${driverId}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function deletePersonnelDriver(lineItemId, driverId) {
+  const res = await apiFetch(`/api/plan/line-items/${lineItemId}/personnel/${driverId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
+export async function generatePersonnelEntries(lineItemId, dryRun = false) {
+  const url = `/api/plan/line-items/${lineItemId}/generate-personnel${dryRun ? '?dry_run=true' : ''}`;
+  const res = await apiFetch(url, { method: 'POST' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}

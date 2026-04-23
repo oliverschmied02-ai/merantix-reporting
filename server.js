@@ -9,6 +9,7 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import pino from 'pino';
 import { spreadDrivers } from './src/lib/plan-revenue.js';
+import { spreadPersonnelDrivers } from './src/lib/plan-personnel.js';
 
 const log = pino({
   level: process.env.LOG_LEVEL || 'info',
@@ -295,6 +296,55 @@ const MIGRATIONS = [
       -- The generate endpoint skips months where this is TRUE.
       ALTER TABLE plan_entries
         ADD COLUMN IF NOT EXISTS is_manual_override BOOLEAN NOT NULL DEFAULT FALSE;
+    `,
+  },
+  {
+    version: 9,
+    description: 'Personnel planning: plan_personnel_drivers',
+    sql: `
+      -- One row per employee or planned hire within a plan version.
+      -- Links to a plan_line_item with category='personnel'.
+      -- The spreading engine produces monthly gross + burden entries.
+      --
+      -- Partial month rule: start/end months are prorated by calendar days.
+      -- Salary increase: new salary applies from salary_increase_date onward.
+      -- Bonus: placed as a lump sum in bonus_month (1-12), only if active.
+      CREATE TABLE IF NOT EXISTS plan_personnel_drivers (
+        id                    SERIAL PRIMARY KEY,
+        line_item_id          INTEGER     NOT NULL REFERENCES plan_line_items(id) ON DELETE CASCADE,
+
+        -- Identity
+        employee_name         TEXT        NOT NULL,
+        role_title            TEXT,
+        department            TEXT,
+        is_filled             BOOLEAN     NOT NULL DEFAULT TRUE,
+        -- FALSE = open / planned hire (headcount placeholder)
+
+        -- Employment dates (NULL = full year)
+        start_date            DATE,
+        end_date              DATE,
+
+        -- Compensation
+        annual_gross_salary   NUMERIC     NOT NULL,
+        -- Employer social charges / payroll burden as a decimal (e.g. 0.20 = 20%)
+        payroll_burden_rate   NUMERIC     NOT NULL DEFAULT 0,
+
+        -- Salary increase mid-year
+        salary_increase_date  DATE,
+        annual_gross_salary_post_increase NUMERIC,
+
+        -- Bonus (annual lump sum placed in bonus_month)
+        annual_bonus          NUMERIC     NOT NULL DEFAULT 0,
+        bonus_month           INTEGER     NOT NULL DEFAULT 12
+                              CHECK (bonus_month BETWEEN 1 AND 12),
+
+        notes                 TEXT,
+        created_by            INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by            INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ppd_line_item ON plan_personnel_drivers(line_item_id);
     `,
   },
 ];
@@ -1450,6 +1500,227 @@ app.post('/api/plan/line-items/:liId/generate', requireAuth, requireAdmin, async
 
     await client.query('COMMIT');
     logAudit(req.user.id, 'plan.generate', `line_item_id=${lineItemId} generated=${generated.length} skipped_manual=${manualMonths.size}`, req);
+    res.json({
+      ok: true,
+      generated: generated.length,
+      skipped_manual_months: [...manualMonths].sort(),
+    });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── PLANNING: PERSONNEL DRIVERS ──────────────────────────────────────
+
+// List personnel drivers for a line item
+app.get('/api/plan/line-items/:liId/personnel', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT ppd.*, u.name AS updated_by_name
+       FROM plan_personnel_drivers ppd
+       LEFT JOIN users u ON u.id = ppd.updated_by
+       WHERE ppd.line_item_id = $1
+       ORDER BY ppd.is_filled DESC, ppd.start_date NULLS FIRST, ppd.id`,
+      [parseInt(req.params.liId)]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a personnel driver
+app.post('/api/plan/line-items/:liId/personnel', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const lineItemId = parseInt(req.params.liId);
+    const {
+      employee_name, role_title, department, is_filled = true,
+      start_date, end_date,
+      annual_gross_salary, payroll_burden_rate = 0,
+      salary_increase_date, annual_gross_salary_post_increase,
+      annual_bonus = 0, bonus_month = 12,
+      notes,
+    } = req.body;
+
+    if (!employee_name) return res.status(400).json({ error: 'employee_name is required' });
+    if (annual_gross_salary === undefined || annual_gross_salary === null)
+      return res.status(400).json({ error: 'annual_gross_salary is required' });
+    if (bonus_month < 1 || bonus_month > 12)
+      return res.status(400).json({ error: 'bonus_month must be 1–12' });
+    if (payroll_burden_rate < 0)
+      return res.status(400).json({ error: 'payroll_burden_rate must be >= 0' });
+
+    const { rows: liCheck } = await pool.query(
+      `SELECT pli.id, pv.locked_at FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1 AND pli.category = 'personnel'`,
+      [lineItemId]
+    );
+    if (!liCheck.length)
+      return res.status(404).json({ error: 'Personnel line item not found (must have category=personnel)' });
+    if (liCheck[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO plan_personnel_drivers
+         (line_item_id, employee_name, role_title, department, is_filled,
+          start_date, end_date, annual_gross_salary, payroll_burden_rate,
+          salary_increase_date, annual_gross_salary_post_increase,
+          annual_bonus, bonus_month, notes, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)
+       RETURNING *`,
+      [
+        lineItemId, employee_name, role_title || null, department || null, is_filled,
+        start_date || null, end_date || null,
+        annual_gross_salary, payroll_burden_rate,
+        salary_increase_date || null, annual_gross_salary_post_increase || null,
+        annual_bonus, bonus_month, notes || null, req.user.id,
+      ]
+    );
+    logAudit(req.user.id, 'plan.personnel.create',
+      `id=${rows[0].id} name="${employee_name}" line_item_id=${lineItemId}`, req);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update a personnel driver
+app.patch('/api/plan/line-items/:liId/personnel/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: check } = await pool.query(
+      `SELECT ppd.id, pv.locked_at FROM plan_personnel_drivers ppd
+       JOIN plan_line_items pli ON pli.id = ppd.line_item_id
+       JOIN plan_versions   pv  ON pv.id  = pli.version_id
+       WHERE ppd.id = $1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Personnel driver not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const f = req.body;
+    const { rows } = await pool.query(
+      `UPDATE plan_personnel_drivers SET
+         employee_name         = COALESCE($1,  employee_name),
+         role_title            = COALESCE($2,  role_title),
+         department            = COALESCE($3,  department),
+         is_filled             = COALESCE($4,  is_filled),
+         start_date            = COALESCE($5,  start_date),
+         end_date              = COALESCE($6,  end_date),
+         annual_gross_salary   = COALESCE($7,  annual_gross_salary),
+         payroll_burden_rate   = COALESCE($8,  payroll_burden_rate),
+         salary_increase_date  = COALESCE($9,  salary_increase_date),
+         annual_gross_salary_post_increase = COALESCE($10, annual_gross_salary_post_increase),
+         annual_bonus          = COALESCE($11, annual_bonus),
+         bonus_month           = COALESCE($12, bonus_month),
+         notes                 = COALESCE($13, notes),
+         updated_by            = $14,
+         updated_at            = NOW()
+       WHERE id = $15 RETURNING *`,
+      [
+        f.employee_name ?? null, f.role_title ?? null, f.department ?? null,
+        f.is_filled ?? null, f.start_date ?? null, f.end_date ?? null,
+        f.annual_gross_salary ?? null, f.payroll_burden_rate ?? null,
+        f.salary_increase_date ?? null, f.annual_gross_salary_post_increase ?? null,
+        f.annual_bonus ?? null, f.bonus_month ?? null,
+        f.notes ?? null, req.user.id, id,
+      ]
+    );
+    logAudit(req.user.id, 'plan.personnel.update', `id=${id}`, req);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a personnel driver
+app.delete('/api/plan/line-items/:liId/personnel/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: check } = await pool.query(
+      `SELECT ppd.id, pv.locked_at FROM plan_personnel_drivers ppd
+       JOIN plan_line_items pli ON pli.id = ppd.line_item_id
+       JOIN plan_versions   pv  ON pv.id  = pli.version_id
+       WHERE ppd.id = $1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Personnel driver not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+    await pool.query('DELETE FROM plan_personnel_drivers WHERE id=$1', [id]);
+    logAudit(req.user.id, 'plan.personnel.delete', `id=${id}`, req);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Generate monthly entries from all personnel drivers on a line item.
+// Skips months with is_manual_override=TRUE.
+// ?dry_run=true returns a preview without writing.
+app.post('/api/plan/line-items/:liId/generate-personnel', requireAuth, requireAdmin, async (req, res) => {
+  const lineItemId = parseInt(req.params.liId);
+  const dryRun = req.query.dry_run === 'true';
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: liRows } = await client.query(
+      `SELECT pli.item_id, pv.year, pv.locked_at, pv.id AS version_id
+       FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1 AND pli.category = 'personnel'`, [lineItemId]
+    );
+    if (!liRows.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Personnel line item not found' });
+    }
+    if (liRows[0].locked_at) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'Version is locked' });
+    }
+
+    const { item_id, year, version_id } = liRows[0];
+
+    const { rows: drivers } = await client.query(
+      'SELECT * FROM plan_personnel_drivers WHERE line_item_id=$1',
+      [lineItemId]
+    );
+    const { rows: existingEntries } = await client.query(
+      'SELECT month, is_manual_override FROM plan_entries WHERE version_id=$1 AND line_item_id=$2',
+      [version_id, lineItemId]
+    );
+    const manualMonths = new Set(
+      existingEntries.filter(e => e.is_manual_override).map(e => e.month)
+    );
+
+    const generated = spreadPersonnelDrivers(drivers, year)
+      .filter(e => !manualMonths.has(e.month));
+
+    if (dryRun) {
+      await client.query('ROLLBACK');
+      return res.json({
+        dry_run: true, year, generated,
+        skipped_manual_months: [...manualMonths].sort(),
+      });
+    }
+
+    for (const e of generated) {
+      await client.query(
+        `INSERT INTO plan_entries
+           (version_id, line_item_id, item_id, month, year, amount, is_manual_override, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7,NOW())
+         ON CONFLICT (version_id, line_item_id, month)
+         WHERE line_item_id IS NOT NULL
+         DO UPDATE SET amount=$6, is_manual_override=FALSE, updated_by=$7, updated_at=NOW()`,
+        [version_id, lineItemId, item_id, e.month, year, e.amount, req.user.id]
+      );
+    }
+
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.personnel.generate',
+      `line_item_id=${lineItemId} generated=${generated.length} skipped_manual=${manualMonths.size}`, req);
     res.json({
       ok: true,
       generated: generated.length,
