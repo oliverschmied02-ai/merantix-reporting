@@ -162,6 +162,59 @@ const MIGRATIONS = [
     sql: `ALTER TABLE gdpdu_files ADD COLUMN IF NOT EXISTS content_hash TEXT;
           CREATE INDEX IF NOT EXISTS idx_gdpdu_hash ON gdpdu_files(content_hash);`,
   },
+  {
+    version: 6,
+    description: 'Planning module: plan_versions, plan_entries, plan_assumptions',
+    sql: `
+      -- A named planning scenario/version (e.g. "Budget 2025", "Forecast Q3")
+      CREATE TABLE IF NOT EXISTS plan_versions (
+        id          SERIAL PRIMARY KEY,
+        name        TEXT        NOT NULL,
+        year        INTEGER     NOT NULL,
+        type        TEXT        NOT NULL DEFAULT 'budget'
+                    CHECK (type IN ('budget','forecast','scenario')),
+        notes       TEXT,
+        created_by  INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by  INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        locked_at   TIMESTAMPTZ,
+        locked_by   INTEGER     REFERENCES users(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pv_year ON plan_versions(year);
+
+      -- Monthly planned amounts per line item per version.
+      -- item_id matches APP.plDef[].id (e.g. 'revenue', 'personnel').
+      -- amount sign convention: positive = income-side, negative = cost-side.
+      CREATE TABLE IF NOT EXISTS plan_entries (
+        id          SERIAL PRIMARY KEY,
+        version_id  INTEGER     NOT NULL REFERENCES plan_versions(id) ON DELETE CASCADE,
+        item_id     TEXT        NOT NULL,
+        month       INTEGER     NOT NULL CHECK (month BETWEEN 1 AND 12),
+        year        INTEGER     NOT NULL,
+        amount      NUMERIC     NOT NULL DEFAULT 0,
+        note        TEXT,
+        updated_by  INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE (version_id, item_id, month, year)
+      );
+      CREATE INDEX IF NOT EXISTS idx_pe_version ON plan_entries(version_id);
+      CREATE INDEX IF NOT EXISTS idx_pe_item    ON plan_entries(item_id);
+
+      -- Named assumptions attached to a version (e.g. "Headcount: 12 FTE").
+      CREATE TABLE IF NOT EXISTS plan_assumptions (
+        id          SERIAL PRIMARY KEY,
+        version_id  INTEGER     NOT NULL REFERENCES plan_versions(id) ON DELETE CASCADE,
+        label       TEXT        NOT NULL,
+        value       TEXT        NOT NULL DEFAULT '',
+        note        TEXT,
+        sort_order  INTEGER     NOT NULL DEFAULT 0,
+        updated_by  INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pa_version ON plan_assumptions(version_id);
+    `,
+  },
 ];
 
 async function runMigrations() {
@@ -691,6 +744,254 @@ app.get('/api/audit', requireAuth, requireAdmin, async (req, res) => {
     res.json({ rows, total: parseInt(countRows[0].count) });
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ── PLANNING: VERSIONS ───────────────────────────────────────────────
+
+// List versions, optionally filtered by year
+app.get('/api/plan/versions', requireAuth, async (req, res) => {
+  try {
+    const year = req.query.year ? parseInt(req.query.year) : null;
+    const { rows } = await pool.query(
+      `SELECT pv.*,
+              cb.name AS created_by_name,
+              ub.name AS updated_by_name,
+              lb.name AS locked_by_name,
+              (SELECT COUNT(*) FROM plan_entries pe WHERE pe.version_id = pv.id) AS entry_count,
+              (SELECT COUNT(*) FROM plan_assumptions pa WHERE pa.version_id = pv.id) AS assumption_count
+       FROM plan_versions pv
+       LEFT JOIN users cb ON cb.id = pv.created_by
+       LEFT JOIN users ub ON ub.id = pv.updated_by
+       LEFT JOIN users lb ON lb.id = pv.locked_by
+       ${year ? 'WHERE pv.year = $1' : ''}
+       ORDER BY pv.year DESC, pv.created_at DESC`,
+      year ? [year] : []
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a new version
+app.post('/api/plan/versions', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { name, year, type = 'budget', notes } = req.body;
+    if (!name || !year) return res.status(400).json({ error: 'name and year are required' });
+    if (!['budget', 'forecast', 'scenario'].includes(type))
+      return res.status(400).json({ error: 'type must be budget, forecast, or scenario' });
+    const { rows } = await pool.query(
+      `INSERT INTO plan_versions (name, year, type, notes, created_by, updated_by)
+       VALUES ($1, $2, $3, $4, $5, $5)
+       RETURNING *`,
+      [name.trim(), parseInt(year), type, notes || null, req.user.id]
+    );
+    logAudit(req.user.id, 'plan.version.create', `id=${rows[0].id} name="${rows[0].name}" year=${rows[0].year}`, req);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Get a single version (with entries and assumptions)
+app.get('/api/plan/versions/:id', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: vRows } = await pool.query(
+      `SELECT pv.*, cb.name AS created_by_name, ub.name AS updated_by_name, lb.name AS locked_by_name
+       FROM plan_versions pv
+       LEFT JOIN users cb ON cb.id = pv.created_by
+       LEFT JOIN users ub ON ub.id = pv.updated_by
+       LEFT JOIN users lb ON lb.id = pv.locked_by
+       WHERE pv.id = $1`, [id]
+    );
+    if (!vRows.length) return res.status(404).json({ error: 'Version not found' });
+    const { rows: entries }     = await pool.query('SELECT * FROM plan_entries WHERE version_id=$1 ORDER BY item_id, month', [id]);
+    const { rows: assumptions } = await pool.query('SELECT * FROM plan_assumptions WHERE version_id=$1 ORDER BY sort_order, id', [id]);
+    res.json({ ...vRows[0], entries, assumptions });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update version metadata (name, type, notes)
+app.patch('/api/plan/versions/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { name, type, notes } = req.body;
+    // Refuse writes to locked versions
+    const { rows: check } = await pool.query('SELECT locked_at FROM plan_versions WHERE id=$1', [id]);
+    if (!check.length) return res.status(404).json({ error: 'Version not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `UPDATE plan_versions
+       SET name=$1, type=COALESCE($2,type), notes=$3, updated_by=$4, updated_at=NOW()
+       WHERE id=$5 RETURNING *`,
+      [name, type || null, notes ?? null, req.user.id, id]
+    );
+    logAudit(req.user.id, 'plan.version.update', `id=${id}`, req);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Lock / unlock a version
+app.post('/api/plan/versions/:id/lock', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { locked } = req.body; // true = lock, false = unlock
+    const { rows } = await pool.query(
+      `UPDATE plan_versions
+       SET locked_at = $1, locked_by = $2, updated_by = $2, updated_at = NOW()
+       WHERE id = $3 RETURNING *`,
+      [locked ? new Date() : null, locked ? req.user.id : null, id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Version not found' });
+    logAudit(req.user.id, locked ? 'plan.version.lock' : 'plan.version.unlock', `id=${id}`, req);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Delete a version (cascades to entries + assumptions)
+app.delete('/api/plan/versions/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: check } = await pool.query('SELECT locked_at, name FROM plan_versions WHERE id=$1', [id]);
+    if (!check.length) return res.status(404).json({ error: 'Version not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Cannot delete a locked version' });
+    await pool.query('DELETE FROM plan_versions WHERE id=$1', [id]);
+    logAudit(req.user.id, 'plan.version.delete', `id=${id} name="${check[0].name}"`, req);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── PLANNING: ENTRIES ─────────────────────────────────────────────────
+
+// Get all entries for a version (optionally filtered by item_id)
+app.get('/api/plan/versions/:id/entries', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows } = await pool.query(
+      `SELECT pe.*, u.name AS updated_by_name
+       FROM plan_entries pe
+       LEFT JOIN users u ON u.id = pe.updated_by
+       WHERE pe.version_id = $1
+       ${req.query.item_id ? 'AND pe.item_id = $2' : ''}
+       ORDER BY pe.item_id, pe.month`,
+      req.query.item_id ? [id, req.query.item_id] : [id]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Bulk upsert monthly entries for a version.
+// Body: { entries: [{ item_id, month, year, amount, note }] }
+app.put('/api/plan/versions/:id/entries', requireAuth, requireAdmin, async (req, res) => {
+  const versionId = parseInt(req.params.id);
+  const { entries } = req.body;
+  if (!Array.isArray(entries) || entries.length === 0)
+    return res.status(400).json({ error: 'entries array required' });
+
+  // Validate
+  for (const e of entries) {
+    if (!e.item_id) return res.status(400).json({ error: 'each entry needs item_id' });
+    if (!e.month || e.month < 1 || e.month > 12) return res.status(400).json({ error: `invalid month: ${e.month}` });
+    if (!e.year) return res.status(400).json({ error: 'each entry needs year' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Refuse writes to locked versions
+    const { rows: check } = await client.query('SELECT locked_at FROM plan_versions WHERE id=$1', [versionId]);
+    if (!check.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Version not found' }); }
+    if (check[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
+
+    for (const e of entries) {
+      await client.query(
+        `INSERT INTO plan_entries (version_id, item_id, month, year, amount, note, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (version_id, item_id, month, year)
+         DO UPDATE SET amount=$5, note=$6, updated_by=$7, updated_at=NOW()`,
+        [versionId, e.item_id, e.month, e.year, e.amount ?? 0, e.note ?? null, req.user.id]
+      );
+    }
+    await client.query(
+      'UPDATE plan_versions SET updated_by=$1, updated_at=NOW() WHERE id=$2',
+      [req.user.id, versionId]
+    );
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.entries.upsert', `version_id=${versionId} count=${entries.length}`, req);
+    res.json({ ok: true, count: entries.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// ── PLANNING: ASSUMPTIONS ─────────────────────────────────────────────
+
+// Get all assumptions for a version
+app.get('/api/plan/versions/:id/assumptions', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT pa.*, u.name AS updated_by_name
+       FROM plan_assumptions pa
+       LEFT JOIN users u ON u.id = pa.updated_by
+       WHERE pa.version_id = $1
+       ORDER BY pa.sort_order, pa.id`,
+      [parseInt(req.params.id)]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Replace all assumptions for a version (full replace, not merge)
+// Body: { assumptions: [{ label, value, note, sort_order }] }
+app.put('/api/plan/versions/:id/assumptions', requireAuth, requireAdmin, async (req, res) => {
+  const versionId = parseInt(req.params.id);
+  const { assumptions } = req.body;
+  if (!Array.isArray(assumptions)) return res.status(400).json({ error: 'assumptions array required' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: check } = await client.query('SELECT locked_at FROM plan_versions WHERE id=$1', [versionId]);
+    if (!check.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Version not found' }); }
+    if (check[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
+
+    await client.query('DELETE FROM plan_assumptions WHERE version_id=$1', [versionId]);
+    for (let i = 0; i < assumptions.length; i++) {
+      const a = assumptions[i];
+      if (!a.label) continue;
+      await client.query(
+        `INSERT INTO plan_assumptions (version_id, label, value, note, sort_order, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        [versionId, a.label, a.value ?? '', a.note ?? null, a.sort_order ?? i, req.user.id]
+      );
+    }
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.assumptions.update', `version_id=${versionId}`, req);
+    res.json({ ok: true });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
   }
 });
 

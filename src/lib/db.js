@@ -204,3 +204,91 @@ export async function checkContentHash(hash) {
   if (!res.ok) return { duplicate: false };
   return res.json();
 }
+
+// ── Planning API ──────────────────────────────────────────────────────
+
+export async function getPlanVersions(year) {
+  const url = year ? `/api/plan/versions?year=${encodeURIComponent(year)}` : '/api/plan/versions';
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function getPlanVersion(id) {
+  const res = await apiFetch(`/api/plan/versions/${id}`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function createPlanVersion(name, year, type, notes) {
+  const res = await apiFetch('/api/plan/versions', {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ name, year, type, notes }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function updatePlanVersion(id, patch) {
+  const res = await apiFetch(`/api/plan/versions/${id}`, {
+    method: 'PATCH',
+    headers: JSON_HEADERS,
+    body: JSON.stringify(patch),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function lockPlanVersion(id, locked) {
+  const res = await apiFetch(`/api/plan/versions/${id}/lock`, {
+    method: 'POST',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ locked }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function deletePlanVersion(id) {
+  const res = await apiFetch(`/api/plan/versions/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
+export async function getPlanEntries(versionId, itemId) {
+  const url = `/api/plan/versions/${versionId}/entries${itemId ? `?item_id=${encodeURIComponent(itemId)}` : ''}`;
+  const res = await apiFetch(url);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function upsertPlanEntries(versionId, entries) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/entries`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ entries }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
+
+export async function getPlanAssumptions(versionId) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/assumptions`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function savePlanAssumptions(versionId, assumptions) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/assumptions`, {
+    method: 'PUT',
+    headers: JSON_HEADERS,
+    body: JSON.stringify({ assumptions }),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+  return data;
+}
