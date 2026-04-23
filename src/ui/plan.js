@@ -704,6 +704,8 @@ export function planAddLineItem(opexItemId = null) {
 
   _plmDriverMode = 'management_fee';
   plmCategoryChanged();
+  // Restore specific item_id after plmCategoryChanged overwrites it with the category
+  if (opexItemId) document.getElementById('plm-itemid').value = opexItemId;
 }
 
 export function closeLineItemModalAndCleanup() {
