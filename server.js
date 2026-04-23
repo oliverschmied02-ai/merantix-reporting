@@ -449,6 +449,7 @@ const MIGRATIONS = [
         DROP CONSTRAINT IF EXISTS plan_entries_version_id_item_id_month_year_key;
       ALTER TABLE plan_personnel_drivers
         ADD COLUMN IF NOT EXISTS country TEXT;
+      UPDATE plan_line_items SET category = 'other' WHERE category = 'allocation';
       ALTER TABLE plan_line_items
         DROP CONSTRAINT IF EXISTS plan_line_items_category_check;
       ALTER TABLE plan_line_items
@@ -2308,4 +2309,4 @@ app.get('/{*path}', (req, res) => {
 
 initDB()
   .then(() => app.listen(PORT, '0.0.0.0', () => log.info({ port: PORT }, 'Server started')))
-  .catch(e => { log.fatal({ err: e.message }, 'DB init failed'); process.exit(1); });
+  .catch(e => { log.fatal({ err: e.message, stack: e.stack }, 'DB init failed'); process.exit(1); });
