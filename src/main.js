@@ -17,7 +17,7 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
   renderRulesList, toggleRule, deleteRule } from './ui/rules.js';
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
-import { checkAuth, login, logout, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
+import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 
@@ -109,6 +109,8 @@ async function addUser() {
   const pw    = document.getElementById('new-user-pw').value;
   const errEl = document.getElementById('users-error');
   errEl.textContent = '';
+  if (!name || !email) { errEl.textContent = 'Name und E-Mail erforderlich.'; return; }
+  if (pw.length < 12) { errEl.textContent = 'Passwort muss mindestens 12 Zeichen haben.'; return; }
   try {
     await createUser(email, name, pw);
     document.getElementById('new-user-name').value = '';
@@ -176,6 +178,7 @@ async function confirmResetPw() {
   const pw = document.getElementById('reset-pw-val').value;
   const errEl = document.getElementById('reset-pw-error');
   errEl.textContent = '';
+  if (pw.length < 12) { errEl.textContent = 'Passwort muss mindestens 12 Zeichen haben.'; return; }
   try {
     await resetUserPassword(_resetTargetId, pw);
     cancelResetPw();
@@ -326,17 +329,20 @@ window.copyTempPassword = copyTempPassword;
 
 // ── Year lazy-load ────────────────────────────────────────────────────
 export async function changeYear() {
-  const year = parseInt(document.getElementById('year-sel').value);
+  const sel  = document.getElementById('year-sel');
+  const year = parseInt(sel?.value);
   if (!year) { buildPL(); return; }
   if (!APP.loadedYears.has(year)) {
+    if (sel) sel.disabled = true;
     try {
       const data = await loadTransactionsForYear(year);
-      // Remove any stale transactions for this year (shouldn't exist, but be safe)
       APP.allTransactions = APP.allTransactions.filter(t => t.wjYear !== year);
       APP.allTransactions.push(...data);
       APP.loadedYears.add(year);
     } catch (e) {
       showToast('Fehler beim Laden des Jahres ' + year + ': ' + e.message);
+    } finally {
+      if (sel) sel.disabled = false;
     }
   }
   buildPL();
@@ -491,12 +497,11 @@ async function loadAndShowApp(user) {
   applyRole(user);
 
   try {
-    // Load metadata to discover available years, then fetch only the latest year's transactions.
-    const meta = await loadFromServer();
+    // Load metadata only (no transactions), then fetch only the latest year's transactions.
+    const meta = await loadMetaFromServer();
     if (meta && meta.loadedFiles.length > 0) {
       APP.loadedFiles  = meta.loadedFiles;
       APP.accountNames = meta.accountNames;
-      // Derive all years from file metadata
       const allYears = [...new Set(meta.loadedFiles.flatMap(f => f.years || []))].sort();
       APP.years = allYears;
       const latestYear = allYears[allYears.length - 1];
@@ -504,8 +509,6 @@ async function loadAndShowApp(user) {
         const yearData = await loadFromServer(latestYear);
         APP.allTransactions = yearData?.transactions || [];
         APP.loadedYears.add(latestYear);
-      } else {
-        APP.allTransactions = meta.transactions || [];
       }
       rebuildAcctMap();
       updateSidebarBadge();

@@ -50,8 +50,16 @@ export function updateTopCompany() {
 }
 
 export function removeFile(fileId) {
+  // Recompute which years still have data after removing this file
+  const removedFile = APP.loadedFiles.find(f => f.id === fileId);
   APP.allTransactions = APP.allTransactions.filter(t => t._fileId !== fileId);
   APP.loadedFiles = APP.loadedFiles.filter(f => f.id !== fileId);
+  if (removedFile?.years) {
+    const remainingYears = new Set(APP.loadedFiles.flatMap(f => f.years || []));
+    for (const y of removedFile.years) {
+      if (!remainingYears.has(y)) APP.loadedYears.delete(y);
+    }
+  }
   deleteFileFromServer(fileId).catch(e => console.warn('Delete failed:', e));
   updateSidebarBadge();
   if (APP.loadedFiles.length === 0) {

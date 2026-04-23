@@ -489,7 +489,32 @@ app.get('/api/data/check-hash/:hash', requireAuth, async (req, res) => {
   res.json(rows.length ? { duplicate: true, file: rows[0] } : { duplicate: false });
 });
 
-// ── DATA: LOAD ALL (metadata + account names only; transactions loaded per-year) ──
+// ── DATA: METADATA ONLY (no transactions) ────────────────────────────
+app.get('/api/data/meta', requireAuth, async (req, res) => {
+  try {
+    const files = await pool.query(
+      'SELECT gf.*, u.name as uploader_name FROM gdpdu_files gf LEFT JOIN users u ON gf.uploaded_by = u.id ORDER BY gf.uploaded_at'
+    );
+    if (files.rows.length === 0) return res.json(null);
+    const accts = await pool.query('SELECT * FROM account_names');
+    res.json({
+      loadedFiles: files.rows.map(f => ({
+        id:          f.id,
+        name:        f.name,
+        companyName: f.company_name || '',
+        uploadedAt:  f.uploaded_at,
+        txnCount:    f.txn_count,
+        years:       f.years,
+        uploadedBy:  f.uploader_name || '',
+      })),
+      accountNames: accts.rows.map(r => [r.ktonr, r.name]),
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ── DATA: LOAD ALL (transactions, optionally filtered by year) ────────
 app.get('/api/data', requireAuth, async (req, res) => {
   try {
     const files = await pool.query(

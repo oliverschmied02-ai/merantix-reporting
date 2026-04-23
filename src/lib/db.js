@@ -29,6 +29,17 @@ export async function checkAuth() {
   return data.user;
 }
 
+export async function loadMetaFromServer() {
+  const res = await apiFetch('/api/data/meta');
+  if (!res.ok) throw new Error('Meta load failed: ' + res.status);
+  const data = await res.json();
+  if (!data) return null;
+  return {
+    loadedFiles:  data.loadedFiles,
+    accountNames: new Map(data.accountNames),
+  };
+}
+
 export async function loadFromServer(year) {
   const url = year ? `/api/data?year=${encodeURIComponent(year)}` : '/api/data';
   const res = await apiFetch(url);
