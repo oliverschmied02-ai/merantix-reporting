@@ -501,6 +501,8 @@ export async function planSaveEdits() {
 
 // ── Add line item ─────────────────────────────────────────────────────
 
+let _plmDriverMode = 'management_fee'; // 'management_fee' | 'one_off' | 'manual'
+
 export function planAddLineItem() {
   const m = document.getElementById('plan-lineitem-modal');
   if (!m) return;
@@ -511,6 +513,45 @@ export function planAddLineItem() {
   document.getElementById('plm-fund').value     = '';
   document.getElementById('plm-itemid').value   = 'opex';
   document.getElementById('plm-error').textContent = '';
+  document.getElementById('plm-driver-section').style.display = 'none';
+  _plmDriverMode = 'management_fee';
+  plmDriverMode('management_fee');
+}
+
+export function plmCategoryChanged() {
+  const cat = document.getElementById('plm-category').value;
+  document.getElementById('plm-itemid').value = cat;
+  const sec = document.getElementById('plm-driver-section');
+  if (cat === 'revenue') {
+    sec.style.display = 'block';
+    plmDriverMode(_plmDriverMode);
+  } else {
+    sec.style.display = 'none';
+  }
+}
+
+export function plmDriverMode(mode) {
+  _plmDriverMode = mode;
+  ['management_fee', 'one_off', 'manual'].forEach(m => {
+    const btn = document.getElementById(`plm-drv-${m === 'management_fee' ? 'mgmt' : m === 'one_off' ? 'oneoff' : 'manual'}-btn`);
+    if (btn) btn.classList.toggle('active', m === mode);
+  });
+  document.getElementById('plm-mgmt-fields').style.display   = mode === 'management_fee' ? 'grid'  : 'none';
+  document.getElementById('plm-oneoff-fields').style.display = mode === 'one_off'         ? 'grid'  : 'none';
+  document.getElementById('plm-drv-preview').textContent = '';
+  if (mode === 'management_fee') plmUpdatePreview();
+}
+
+export function plmUpdatePreview() {
+  const preview = document.getElementById('plm-drv-preview');
+  if (!preview) return;
+  const c   = parseFloat(document.getElementById('plm-commitment').value) || 0;
+  const pct = parseFloat(document.getElementById('plm-fee-pct').value)    || 0;
+  const annual = c * pct / 100;
+  const FMT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+  preview.textContent = annual > 0
+    ? `→ ${FMT.format(annual)} p.a. · ${FMT.format(annual / 12)} / Monat`
+    : '';
 }
 
 export function closeLineItemModal() {
@@ -530,6 +571,23 @@ export async function submitAddLineItem() {
   errEl.textContent = '';
   if (!label) { errEl.textContent = 'Bezeichnung erforderlich.'; return; }
 
+  // Validate driver fields for revenue items before touching the DB
+  let driverPayload = null;
+  if (category === 'revenue' && _plmDriverMode !== 'manual') {
+    if (_plmDriverMode === 'management_fee') {
+      const commitment = parseFloat(document.getElementById('plm-commitment').value);
+      const fee_pct    = parseFloat(document.getElementById('plm-fee-pct').value);
+      if (!commitment || !fee_pct) { errEl.textContent = 'Bitte Commitment und Fee % angeben.'; return; }
+      driverPayload = { driver_type: 'management_fee', commitment, fee_pct };
+    } else if (_plmDriverMode === 'one_off') {
+      const rawAmt  = document.getElementById('plm-oneoff-amount').value.replace(',', '.');
+      const amount  = parseFloat(rawAmt);
+      const date    = document.getElementById('plm-oneoff-date').value || null;
+      if (isNaN(amount) || !amount) { errEl.textContent = 'Bitte Betrag angeben.'; return; }
+      driverPayload = { driver_type: 'one_off', amount, start_date: date };
+    }
+  }
+
   btn.disabled = true; btn.textContent = '…';
   try {
     const li = await createPlanLineItem(_currentVersion.id, {
@@ -537,9 +595,18 @@ export async function submitAddLineItem() {
       item_id, sort_order: _lineItems.length,
     });
     _lineItems.push(li);
+
+    // Create driver and immediately generate entries
+    if (driverPayload) {
+      await createRevenueDriver(li.id, driverPayload);
+      const result = await generateFromDrivers(li.id);
+      // Merge generated entries into local state
+      for (const e of result.entries ?? []) _entries.push(e);
+    }
+
     closeLineItemModal();
     renderGrid();
-    showToast('Position hinzugefügt');
+    showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {

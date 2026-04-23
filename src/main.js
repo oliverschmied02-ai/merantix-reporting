@@ -23,6 +23,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
   planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
+  plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, planDeleteVersion,
   openCompareScreen, runComparison,
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
@@ -68,6 +69,7 @@ Object.assign(window, {
   planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, submitAddLineItem, planDeleteLineItem,
+  plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, planDeleteVersion,
   openCompareScreen, runComparison,
   // Revenue drivers

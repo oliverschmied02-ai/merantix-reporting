@@ -346,7 +346,7 @@
 
         <!-- ═══ PLAN: Add Line Item Modal ═══ -->
         <div id="plan-lineitem-modal" style="display:none;position:fixed;inset:0;background:rgba(30,36,51,.45);z-index:400;align-items:center;justify-content:center">
-          <div class="plan-modal">
+          <div class="plan-modal" style="min-width:440px">
             <div class="plan-modal-header">
               <div class="plan-modal-title">Position hinzufügen</div>
               <button class="drill-close" onclick="closeLineItemModal()">✕</button>
@@ -354,12 +354,12 @@
             <div class="plan-modal-body">
               <div class="plan-field">
                 <label class="plan-label">Bezeichnung</label>
-                <input id="plm-label" class="plan-input" placeholder="z.B. Büromiete" autocomplete="off"/>
+                <input id="plm-label" class="plan-input" placeholder="z.B. Fund II Management Fee" autocomplete="off"/>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
                 <div class="plan-field">
                   <label class="plan-label">Kategorie</label>
-                  <select id="plm-category" class="plan-input ctrl" onchange="document.getElementById('plm-itemid').value=this.value">
+                  <select id="plm-category" class="plan-input ctrl" onchange="plmCategoryChanged()">
                     <option value="revenue">Umsatz</option>
                     <option value="personnel">Personal</option>
                     <option value="opex" selected>OpEx</option>
@@ -372,7 +372,42 @@
                   <input id="plm-itemid" class="plan-input" placeholder="opex" autocomplete="off"/>
                 </div>
               </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+
+              <!-- Revenue driver section — shown only when category = revenue -->
+              <div id="plm-driver-section" style="display:none;margin-top:.25rem;padding:.75rem;background:#f4f6fb;border-radius:8px;border:1px solid #e4e9f5">
+                <div style="font-size:.72rem;font-weight:700;color:#6b7a99;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">Einnahmentyp</div>
+                <div class="seg-ctrl" style="margin-bottom:.75rem">
+                  <button class="seg-btn active" id="plm-drv-mgmt-btn" onclick="plmDriverMode('management_fee')">Management Fee</button>
+                  <button class="seg-btn" id="plm-drv-oneoff-btn" onclick="plmDriverMode('one_off')">Einmalzahlung</button>
+                  <button class="seg-btn" id="plm-drv-manual-btn" onclick="plmDriverMode('manual')">Manuell eingeben</button>
+                </div>
+                <!-- management_fee fields -->
+                <div id="plm-mgmt-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
+                  <div class="plan-field">
+                    <label class="plan-label">Commitment (€)</label>
+                    <input id="plm-commitment" class="plan-input" type="number" min="0" step="1000000" placeholder="100.000.000" oninput="plmUpdatePreview()"/>
+                  </div>
+                  <div class="plan-field">
+                    <label class="plan-label">Management Fee %</label>
+                    <input id="plm-fee-pct" class="plan-input" type="number" min="0" max="10" step="0.01" placeholder="2.0" oninput="plmUpdatePreview()"/>
+                  </div>
+                </div>
+                <!-- one_off fields -->
+                <div id="plm-oneoff-fields" style="display:none;grid-template-columns:1fr 1fr;gap:.75rem">
+                  <div class="plan-field">
+                    <label class="plan-label">Betrag (€)</label>
+                    <input id="plm-oneoff-amount" class="plan-input" type="number" step="0.01" placeholder="0"/>
+                  </div>
+                  <div class="plan-field">
+                    <label class="plan-label">Monat</label>
+                    <input id="plm-oneoff-date" class="plan-input" type="date"/>
+                  </div>
+                </div>
+                <!-- preview -->
+                <div id="plm-drv-preview" style="font-size:.8rem;color:#4f6ef7;font-weight:600;margin-top:.5rem;min-height:1.2em"></div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem;margin-top:.25rem">
                 <div class="plan-field">
                   <label class="plan-label">Gesellschaft (optional)</label>
                   <input id="plm-entity" class="plan-input" placeholder="z.B. Merantix AG" autocomplete="off"/>
