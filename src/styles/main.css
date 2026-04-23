@@ -940,27 +940,103 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .pg-driver-btn:hover { background: #eef1fb; opacity: 1; }
 
 /* OpEx grouped view */
-.pg-opex-group-header td {
-  background: #eef1fb; font-size: .78rem; color: #3a4a72;
-  padding: .45rem .6rem; border-top: 2px solid #d0d8f0; border-bottom: 1px solid #dde3f5;
+/* ── OpEx card view ─────────────────────────────────────────────── */
+.opex-view { display: flex; flex-direction: column; gap: .75rem; padding: .5rem 0; }
+
+.opex-grand-total {
+  text-align: right; font-size: .82rem; color: #6b7a99; padding: 0 .25rem .25rem;
 }
-.pg-opex-group-header .pg-opex-hdr-num,
-.pg-opex-group-header .pg-opex-hdr-total {
-  text-align: right; font-variant-numeric: tabular-nums;
-  color: #6b7a99; font-size: .75rem; padding-right: .5rem;
+.opex-grand-total strong { color: #1e2433; font-size: .95rem; }
+
+.opex-groups { display: flex; flex-direction: column; gap: .5rem; }
+
+.opex-group-card {
+  border: 1px solid #e4e9f5; border-radius: 8px; overflow: hidden;
+  background: #fff;
 }
-.pg-opex-group-header .pg-opex-hdr-total { font-weight: 700; color: #3a4a72; }
-.pg-opex-group-label {
-  display: flex; align-items: center; gap: .6rem;
-  font-weight: 700; white-space: nowrap;
+
+.opex-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem .85rem; background: #f1f4fb;
+  border-bottom: 1px solid #e4e9f5;
 }
-.pg-opex-group-name { color: #4f6ef7; }
-.pg-opex-add-btn {
-  background: none; border: 1px solid #c7d0f7; color: #4f6ef7;
-  font-size: .7rem; cursor: pointer; padding: .1rem .45rem;
-  border-radius: 4px; font-weight: 600; transition: background .1s; flex-shrink: 0;
+.opex-group-name { font-weight: 700; font-size: .8rem; color: #3a4a72; }
+.opex-group-total { font-weight: 700; font-size: .82rem; color: #4f6ef7; font-variant-numeric: tabular-nums; }
+.opex-group-total.zero { color: #b0bbd0; font-weight: 400; }
+
+.opex-group-body { padding: .35rem .5rem .45rem; display: flex; flex-direction: column; gap: .15rem; }
+.opex-empty { color: #b0bbd0; font-size: .78rem; padding: .35rem .35rem; }
+
+/* Individual row */
+.opex-row { border-radius: 5px; }
+.opex-row-main {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .3rem .4rem; border-radius: 5px;
+  transition: background .1s;
 }
-.pg-opex-add-btn:hover { background: #dce4fb; }
+.opex-row-main:hover { background: #f7f9fe; }
+
+.opex-del-btn {
+  background: none; border: none; color: #dc2626; font-size: .7rem;
+  cursor: pointer; padding: .1rem .25rem; border-radius: 3px;
+  opacity: .45; transition: opacity .1s, background .1s; flex-shrink: 0;
+}
+.opex-del-btn:hover { opacity: 1; background: #fee2e2; }
+
+.opex-expand-btn {
+  background: none; border: 1px solid #dde3f5; color: #6b7a99;
+  font-size: .75rem; cursor: pointer; padding: .1rem .35rem;
+  border-radius: 4px; transition: background .1s, color .1s; flex-shrink: 0;
+}
+.opex-expand-btn.active,
+.opex-expand-btn:hover { background: #eef1fb; color: #4f6ef7; border-color: #c7d0f7; }
+
+.opex-row-name {
+  flex: 1; font-size: .82rem; color: #1e2433; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.opex-row-name.editable {
+  cursor: text; border-radius: 3px; padding: .05rem .2rem;
+  outline: none;
+}
+.opex-row-name.editable:hover { background: #f0f4ff; }
+.opex-row-name.editable:focus { background: #fff; box-shadow: 0 0 0 2px #4f6ef755; }
+
+.opex-row-total {
+  font-size: .8rem; font-weight: 600; color: #1e2433;
+  font-variant-numeric: tabular-nums; flex-shrink: 0; min-width: 72px; text-align: right;
+}
+.opex-row-total.zero { color: #b0bbd0; font-weight: 400; }
+
+/* Month expansion */
+.opex-months-row {
+  display: grid; grid-template-columns: repeat(12, 1fr);
+  gap: .25rem; padding: .3rem .4rem .45rem; background: #fafbff;
+  border-top: 1px solid #f0f2f8; border-radius: 0 0 5px 5px;
+}
+.opex-month-cell { display: flex; flex-direction: column; gap: .15rem; }
+.opex-month-label { font-size: .62rem; color: #9aa3b5; text-align: center; font-weight: 600; }
+.opex-month-input {
+  width: 100%; text-align: right; font-size: .75rem; padding: .2rem .25rem;
+  border: 1px solid #e4e9f5; border-radius: 4px; background: #fff;
+  font-variant-numeric: tabular-nums; box-sizing: border-box;
+}
+.opex-month-input:focus { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 2px #4f6ef722; }
+.opex-month-input.pg-dirty { border-color: #f59e0b; background: #fffbeb; }
+
+.opex-add-row-btn {
+  align-self: flex-start; background: none; border: 1px dashed #c7d0f7; color: #6b7a99;
+  font-size: .75rem; cursor: pointer; padding: .2rem .6rem; border-radius: 5px;
+  margin-top: .15rem; transition: background .1s, color .1s, border-color .1s;
+}
+.opex-add-row-btn:hover { background: #eef1fb; color: #4f6ef7; border-color: #4f6ef7; }
+
+/* Editable name in regular grid */
+.pg-li-label.editable {
+  cursor: text; border-radius: 3px; padding: .05rem .2rem; outline: none;
+}
+.pg-li-label.editable:hover { background: #f0f4ff; }
+.pg-li-label.editable:focus { background: #fff; box-shadow: 0 0 0 2px #4f6ef755; }
 
 /* Personnel monthly bar */
 .hc-monthly-bar {

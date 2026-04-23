@@ -26,6 +26,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, planDeleteVersion,
+  planToggleOpexMonths, planSaveLineName,
   openCompareScreen, runComparison,
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
   submitDriver, driverGenerate, driverDelete, driverEdit } from './ui/plan.js';
@@ -72,6 +73,7 @@ Object.assign(window, {
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, planDeleteVersion,
+  planToggleOpexMonths, planSaveLineName,
   openCompareScreen, runComparison,
   // Revenue drivers
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
