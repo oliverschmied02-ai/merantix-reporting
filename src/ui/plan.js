@@ -302,9 +302,9 @@ async function _ensurePersonnelLineItems() {
 // ── OpEx grouped render ────────────────────────────────────────────────
 
 function renderOpexGrouped(items, entryMap, locked) {
-  // Get opex subitems from plDef
+  // plDef uses `subs` for children (not `items`)
   const opexDef = APP.plDef?.find(s => s.id === 'opex');
-  const plGroups = opexDef?.items ?? [];
+  const plGroups = opexDef?.subs ?? [];
 
   // Group existing line items by item_id
   const byItemId = new Map();
@@ -314,22 +314,23 @@ function renderOpexGrouped(items, entryMap, locked) {
     byItemId.get(key).push(li);
   }
 
-  // Collect all active group ids (plDef + any unmapped)
+  // Show all plDef groups; append any unmapped ids at the end
   const plIds = new Set(plGroups.map(g => g.id));
-  const activeGroupIds = [...new Set([
-    ...plGroups.map(g => g.id),
-    ...[...byItemId.keys()].filter(k => !plIds.has(k)),
-  ])];
+  const extraIds = [...byItemId.keys()].filter(k => !plIds.has(k));
+  const allGroups = [
+    ...plGroups,
+    ...extraIds.map(id => ({ id, label: id })),
+  ];
 
   const colTotals = new Array(12).fill(0);
   let grandTotal = 0;
 
-  const groupBlocks = activeGroupIds.map(groupId => {
-    const groupDef = plGroups.find(g => g.id === groupId);
-    const groupLabel = groupDef?.label ?? groupId;
+  const groupBlocks = allGroups.map(groupDef => {
+    const groupId    = groupDef.id;
+    const groupLabel = groupDef.label;
     const groupItems = byItemId.get(groupId) ?? [];
 
-    // Compute group subtotals
+    // Accumulate group subtotals (only from committed + pending)
     const groupColTotals = new Array(12).fill(0);
     for (const li of groupItems) {
       const ma = entryMap.get(li.id) || {};
@@ -337,30 +338,32 @@ function renderOpexGrouped(items, entryMap, locked) {
         const pending = _pendingEdits[`${li.id}_${m}`];
         const val = pending !== undefined ? pending : (ma[m] ?? 0);
         groupColTotals[m - 1] += val;
-        colTotals[m - 1] += val;
-        grandTotal += val;
+        colTotals[m - 1]       += val;
+        grandTotal             += val;
       }
     }
     const groupTotal = groupColTotals.reduce((s, v) => s + v, 0);
 
+    // Header row — non-editable, shows label + subtotal amounts + "+ Position"
+    const headerCells = groupColTotals.map(v =>
+      `<td class="pg-opex-hdr-num">${v !== 0 ? fmtCell(v) : '—'}</td>`
+    ).join('');
+
     const headerRow = `
       <tr class="pg-opex-group-header">
-        <td class="pg-opex-group-label" colspan="${12 + 2}">
-          <span>${esc(groupLabel)}</span>
+        <td class="pg-opex-group-label">
+          <span class="pg-opex-group-name">${esc(groupLabel)}</span>
           ${!locked ? `<button class="pg-opex-add-btn" onclick="planAddLineItem('${groupId}')">+ Position</button>` : ''}
         </td>
+        ${headerCells}
+        <td class="pg-opex-hdr-total">${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</td>
       </tr>`;
 
-    const itemRows = groupItems.map(li => gridRow(li, entryMap.get(li.id) || {}, locked)).join('');
+    const itemRows = groupItems.map(li =>
+      gridRow(li, entryMap.get(li.id) || {}, locked)
+    ).join('');
 
-    const subtotalRow = groupItems.length > 1 ? `
-      <tr class="pg-opex-subtotal-row">
-        <td class="pg-pos-cell" style="font-style:italic;color:#9aa">Zwischensumme</td>
-        ${groupColTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
-        <td class="pg-total-cell">${fmtCell(groupTotal)}</td>
-      </tr>` : '';
-
-    return headerRow + itemRows + subtotalRow;
+    return headerRow + itemRows;
   });
 
   const totalRow = `
