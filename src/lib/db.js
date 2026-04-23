@@ -282,6 +282,53 @@ export async function getPlanAssumptions(versionId) {
   return res.json();
 }
 
+// ── Planning: line items ──────────────────────────────────────────────
+
+export async function getPlanLineItems(versionId, { category, activeOnly = true } = {}) {
+  const params = new URLSearchParams({ ...(category ? { category } : {}), active_only: String(activeOnly) });
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items?${params}`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function createPlanLineItem(versionId, data) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items`, {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(data),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function updatePlanLineItem(versionId, lineItemId, patch) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items/${lineItemId}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify(patch),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
+export async function deletePlanLineItem(versionId, lineItemId) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items/${lineItemId}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error((await res.json()).error);
+}
+
+export async function getLineItemEntries(versionId, lineItemId) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items/${lineItemId}/entries`);
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function upsertLineItemEntries(versionId, lineItemId, entries) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/line-items/${lineItemId}/entries`, {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ entries }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}
+
 export async function savePlanAssumptions(versionId, assumptions) {
   const res = await apiFetch(`/api/plan/versions/${versionId}/assumptions`, {
     method: 'PUT',

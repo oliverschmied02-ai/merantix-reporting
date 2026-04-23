@@ -215,6 +215,49 @@ const MIGRATIONS = [
       CREATE INDEX IF NOT EXISTS idx_pa_version ON plan_assumptions(version_id);
     `,
   },
+  {
+    version: 7,
+    description: 'Planning: plan_line_items with finance categorization + FK on plan_entries',
+    sql: `
+      -- Granular planning rows within a version.
+      -- Each line item maps to one plDef item_id for P&L rollup.
+      -- All dimensional columns are optional free-text in v1.
+      CREATE TABLE IF NOT EXISTS plan_line_items (
+        id           SERIAL PRIMARY KEY,
+        version_id   INTEGER     NOT NULL REFERENCES plan_versions(id) ON DELETE CASCADE,
+        label        TEXT        NOT NULL,
+        item_id      TEXT        NOT NULL,
+        category     TEXT        NOT NULL DEFAULT 'other'
+                     CHECK (category IN ('revenue','personnel','opex','allocation','other')),
+        entity       TEXT,
+        fund_ref     TEXT,
+        department   TEXT,
+        counterparty TEXT,
+        notes        TEXT,
+        sort_order   INTEGER     NOT NULL DEFAULT 0,
+        is_active    BOOLEAN     NOT NULL DEFAULT TRUE,
+        created_by   INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_by   INTEGER     REFERENCES users(id) ON DELETE SET NULL,
+        updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_pli_version  ON plan_line_items(version_id);
+      CREATE INDEX IF NOT EXISTS idx_pli_item     ON plan_line_items(item_id);
+      CREATE INDEX IF NOT EXISTS idx_pli_category ON plan_line_items(category);
+
+      -- Add nullable FK from plan_entries to plan_line_items.
+      -- Existing entries (line_item_id IS NULL) remain valid.
+      ALTER TABLE plan_entries
+        ADD COLUMN IF NOT EXISTS line_item_id INTEGER
+          REFERENCES plan_line_items(id) ON DELETE CASCADE;
+
+      -- New uniqueness constraint for line-item-scoped entries.
+      -- The original UNIQUE (version_id, item_id, month, year) is kept for legacy entries.
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_pe_li_unique
+        ON plan_entries(version_id, line_item_id, month)
+        WHERE line_item_id IS NOT NULL;
+    `,
+  },
 ];
 
 async function runMigrations() {
@@ -938,6 +981,195 @@ app.put('/api/plan/versions/:id/entries', requireAuth, requireAdmin, async (req,
     res.status(500).json({ error: e.message });
   } finally {
     client.release();
+  }
+});
+
+// ── PLANNING: LINE ITEMS ──────────────────────────────────────────────
+
+const VALID_CATEGORIES = new Set(['revenue','personnel','opex','allocation','other']);
+
+// List line items for a version, optionally filtered by category
+app.get('/api/plan/versions/:id/line-items', requireAuth, async (req, res) => {
+  try {
+    const versionId = parseInt(req.params.id);
+    const { category, active_only } = req.query;
+    let where = 'WHERE pli.version_id = $1';
+    const params = [versionId];
+    if (category) { params.push(category); where += ` AND pli.category = $${params.length}`; }
+    if (active_only !== 'false') where += ' AND pli.is_active = TRUE';
+    const { rows } = await pool.query(
+      `SELECT pli.*, cb.name AS created_by_name, ub.name AS updated_by_name
+       FROM plan_line_items pli
+       LEFT JOIN users cb ON cb.id = pli.created_by
+       LEFT JOIN users ub ON ub.id = pli.updated_by
+       ${where}
+       ORDER BY pli.category, pli.sort_order, pli.id`,
+      params
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Create a line item
+app.post('/api/plan/versions/:id/line-items', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const versionId = parseInt(req.params.id);
+    const { label, item_id, category = 'other', entity, fund_ref,
+            department, counterparty, notes, sort_order = 0 } = req.body;
+
+    if (!label || !item_id) return res.status(400).json({ error: 'label and item_id are required' });
+    if (!VALID_CATEGORIES.has(category))
+      return res.status(400).json({ error: `category must be one of: ${[...VALID_CATEGORIES].join(', ')}` });
+
+    const { rows: vCheck } = await pool.query('SELECT locked_at FROM plan_versions WHERE id=$1', [versionId]);
+    if (!vCheck.length) return res.status(404).json({ error: 'Version not found' });
+    if (vCheck[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO plan_line_items
+         (version_id, label, item_id, category, entity, fund_ref, department,
+          counterparty, notes, sort_order, created_by, updated_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
+       RETURNING *`,
+      [versionId, label.trim(), item_id, category,
+       entity || null, fund_ref || null, department || null,
+       counterparty || null, notes || null, sort_order, req.user.id]
+    );
+    logAudit(req.user.id, 'plan.line_item.create', `id=${rows[0].id} label="${rows[0].label}"`, req);
+    res.status(201).json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Update a line item (metadata only — amounts are in plan_entries)
+app.patch('/api/plan/versions/:vid/line-items/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { label, item_id, category, entity, fund_ref,
+            department, counterparty, notes, sort_order, is_active } = req.body;
+
+    if (category !== undefined && !VALID_CATEGORIES.has(category))
+      return res.status(400).json({ error: `category must be one of: ${[...VALID_CATEGORIES].join(', ')}` });
+
+    const { rows: check } = await pool.query(
+      `SELECT pli.id, pv.locked_at
+       FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Line item not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+
+    const { rows } = await pool.query(
+      `UPDATE plan_line_items SET
+         label        = COALESCE($1,  label),
+         item_id      = COALESCE($2,  item_id),
+         category     = COALESCE($3,  category),
+         entity       = COALESCE($4,  entity),
+         fund_ref     = COALESCE($5,  fund_ref),
+         department   = COALESCE($6,  department),
+         counterparty = COALESCE($7,  counterparty),
+         notes        = COALESCE($8,  notes),
+         sort_order   = COALESCE($9,  sort_order),
+         is_active    = COALESCE($10, is_active),
+         updated_by   = $11,
+         updated_at   = NOW()
+       WHERE id = $12
+       RETURNING *`,
+      [label ?? null, item_id ?? null, category ?? null,
+       entity ?? null, fund_ref ?? null, department ?? null,
+       counterparty ?? null, notes ?? null,
+       sort_order ?? null, is_active ?? null, req.user.id, id]
+    );
+    logAudit(req.user.id, 'plan.line_item.update', `id=${id}`, req);
+    res.json(rows[0]);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Bulk upsert monthly entries for a specific line item.
+// Body: { entries: [{ month, amount, note }] } — year and item_id are inferred from the line item.
+app.put('/api/plan/versions/:vid/line-items/:id/entries', requireAuth, requireAdmin, async (req, res) => {
+  const lineItemId = parseInt(req.params.id);
+  const { entries } = req.body;
+  if (!Array.isArray(entries) || entries.length === 0)
+    return res.status(400).json({ error: 'entries array required' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: liRows } = await client.query(
+      `SELECT pli.item_id, pv.year, pv.locked_at
+       FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id
+       WHERE pli.id = $1`, [lineItemId]
+    );
+    if (!liRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Line item not found' }); }
+    if (liRows[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
+
+    const { item_id, year } = liRows[0];
+    const versionId = parseInt(req.params.vid);
+
+    for (const e of entries) {
+      if (!e.month || e.month < 1 || e.month > 12)
+        { await client.query('ROLLBACK'); return res.status(400).json({ error: `invalid month: ${e.month}` }); }
+      await client.query(
+        `INSERT INTO plan_entries
+           (version_id, line_item_id, item_id, month, year, amount, note, updated_by, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NOW())
+         ON CONFLICT (version_id, line_item_id, month)
+         WHERE line_item_id IS NOT NULL
+         DO UPDATE SET amount=$6, note=$7, updated_by=$8, updated_at=NOW()`,
+        [versionId, lineItemId, item_id, e.month, year, e.amount ?? 0, e.note ?? null, req.user.id]
+      );
+    }
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.line_item.entries.upsert', `line_item_id=${lineItemId} count=${entries.length}`, req);
+    res.json({ ok: true, count: entries.length });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Get entries for a single line item
+app.get('/api/plan/versions/:vid/line-items/:id/entries', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM plan_entries WHERE line_item_id=$1 ORDER BY month',
+      [parseInt(req.params.id)]
+    );
+    res.json(rows);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Soft-delete a line item (sets is_active=false, cascades nothing)
+app.delete('/api/plan/versions/:vid/line-items/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+    const { rows: check } = await pool.query(
+      `SELECT pli.id, pv.locked_at FROM plan_line_items pli
+       JOIN plan_versions pv ON pv.id = pli.version_id WHERE pli.id=$1`, [id]
+    );
+    if (!check.length) return res.status(404).json({ error: 'Line item not found' });
+    if (check[0].locked_at) return res.status(409).json({ error: 'Version is locked' });
+    await pool.query(
+      'UPDATE plan_line_items SET is_active=FALSE, updated_by=$1, updated_at=NOW() WHERE id=$2',
+      [req.user.id, id]
+    );
+    logAudit(req.user.id, 'plan.line_item.delete', `id=${id}`, req);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
   }
 });
 
