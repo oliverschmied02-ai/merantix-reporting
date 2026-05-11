@@ -1,11 +1,5 @@
 /**
  * Planning module UI.
- *
- * Two sub-views rendered inside #plan-screen:
- *   - Version list  (#plan-versions-view)  — shows all versions as cards
- *   - Version detail (#plan-detail-view)   — monthly grid per line item
- *
- * State is kept in module-level variables; no APP coupling needed here.
  */
 
 import { esc, MONTH_SHORT } from '../lib/utils.js';
@@ -23,17 +17,17 @@ import { renderPersonnelView, setPersonnelRefresh } from './personnel.js';
 // ── Module state ──────────────────────────────────────────────────────
 
 let _versions       = [];
-let _currentVersion = null;   // full version object
-let _lineItems      = [];     // line items for current version
-let _entries        = [];     // plan_entries for current version (all months)
-let _categoryFilter = 'revenue';  // 'revenue' | 'personnel' | 'opex' | 'depreciation'
-let _pendingEdits   = {};     // { `${lineItemId}_${month}`: amount }
+let _currentVersion = null;
+let _lineItems      = [];
+let _entries        = [];
+let _categoryFilter = 'revenue';
+let _pendingEdits   = {};
 let _saving         = false;
 
 // Driver modal state
 let _driverLineItemId = null;
-let _driverEditId     = null;  // null = create, number = editing existing
-let _driverList       = [];    // cached drivers for the open line item
+let _driverEditId     = null;
+let _driverList       = [];
 
 const CATEGORIES = ['revenue', 'personnel', 'opex', 'depreciation'];
 const CAT_LABEL  = { revenue: 'Umsatz', personnel: 'Personal',
@@ -71,7 +65,6 @@ function renderVersionList() {
     el.innerHTML = `<div class="plan-empty">Noch keine Planversionen. Erstelle deine erste Version.</div>`;
     return;
   }
-  // Group by year descending
   const byYear = new Map();
   for (const v of _versions) {
     if (!byYear.has(v.year)) byYear.set(v.year, []);
@@ -158,7 +151,6 @@ export async function planOpenVersion(id) {
   _pendingEdits = {};
 
   try {
-    // Load version, line items, entries in parallel
     const [versionData, lineItems, entries] = await Promise.all([
       getPlanVersions().then(vs => vs.find(v => v.id === id)),
       getPlanLineItems(id, { activeOnly: false }),
@@ -181,7 +173,7 @@ export async function planOpenVersion(id) {
   }
 }
 
-function renderDetailHeader() {
+export function renderDetailHeader() {
   const v       = _currentVersion;
   const locked  = !!v.locked_at;
   const el      = document.getElementById('plan-detail-header');
@@ -197,12 +189,12 @@ function renderDetailHeader() {
         </div>
       </div>
       <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        ${!locked ? `<button class="btn-plan-save hidden" id="plan-save-btn" onclick="planSaveEdits()">Speichern</button>` : ''}
+        ${!locked ? `<button class="btn-plan-save" id="plan-save-btn" onclick="planSaveEdits()" disabled>Speichern</button>` : ''}
         ${!locked
           ? `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔒 Sperren</button>`
           : `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔓 Entsperren</button>`
         }
-        <button class="btn-sm" style="color:#dc2626;border-color:#fecaca" onclick="planDeleteVersion(${v.id})">Löschen</button>
+        <button class="btn-sm btn-danger-outline" onclick="planConfirmDeleteVersion(${v.id})">Löschen</button>
       </div>
     </div>`;
 }
@@ -221,7 +213,6 @@ export function renderGrid() {
   const el = document.getElementById('plan-detail-content');
   if (!el || !_currentVersion) return;
 
-  // Personnel tab → headcount view (auto-ensures standard line items exist)
   if (_categoryFilter === 'personnel') {
     setPersonnelRefresh(async () => {
       _entries = await getPlanEntries(_currentVersion.id);
@@ -237,32 +228,31 @@ export function renderGrid() {
   const items = _lineItems.filter(li => li.category === _categoryFilter);
   const locked = !!_currentVersion.locked_at;
 
-  // Build a lookup: lineItemId → { month → amount }
   const entryMap = new Map();
   for (const e of _entries) {
     if (!entryMap.has(e.line_item_id)) entryMap.set(e.line_item_id, {});
     entryMap.get(e.line_item_id)[e.month] = Number(e.amount);
   }
 
-  // OpEx gets P&L-grouped rendering
   if (_categoryFilter === 'opex') {
     el.innerHTML = renderOpexGrouped(items, entryMap, locked);
     return;
   }
 
+  // Revenue / Depreciation — add button on the LEFT
   const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem()">+ Position</button>` : '';
 
   if (!items.length) {
-    el.innerHTML = `<div class="plan-empty">
-      Keine Positionen in dieser Kategorie.
+    el.innerHTML = `<div class="plan-empty plan-empty-row">
       ${addBtn}
+      <span>Keine Positionen in dieser Kategorie.</span>
     </div>`;
     return;
   }
 
   el.innerHTML = `
     <div class="plan-grid-wrap">
-      ${addBtn ? `<div class="plan-grid-actions">${addBtn}</div>` : ''}
+      ${addBtn ? `<div class="plan-grid-actions plan-grid-actions-left">${addBtn}</div>` : ''}
       <table class="plan-grid">
         <thead>
           <tr>
@@ -301,7 +291,9 @@ async function _ensurePersonnelLineItems() {
 
 // ── OpEx card view ─────────────────────────────────────────────────────
 
-let _opexExpanded = new Set(); // item_ids with months expanded
+let _opexExpanded = new Set();
+
+const OPEX_ACCENT_COLORS = ['#4f6ef7','#d97706','#16a34a','#9333ea','#0ea5e9','#f43f5e','#14b8a6','#f97316'];
 
 function renderOpexGrouped(items, entryMap, locked) {
   const opexDef  = APP.plDef?.find(s => s.id === 'opex');
@@ -309,32 +301,45 @@ function renderOpexGrouped(items, entryMap, locked) {
 
   const byItemId = new Map();
   for (const li of items) {
-    const key = li.item_id || 'opex';
+    const key = li.item_id || '__ungrouped__';
     if (!byItemId.has(key)) byItemId.set(key, []);
     byItemId.get(key).push(li);
   }
 
-  const plIds     = new Set(plGroups.map(g => g.id));
-  const extraIds  = [...byItemId.keys()].filter(k => !plIds.has(k));
+  const plIds = new Set(plGroups.map(g => g.id));
+
+  // Extra groups: item_ids not matching any plGroup and not the bare fallback strings
+  const extraIds = [...byItemId.keys()].filter(k =>
+    !plIds.has(k) && k !== 'opex' && k !== '__ungrouped__'
+  );
+
+  // Consolidate all ungrouped items (item_id === 'opex' or missing)
+  const ungroupedItems = [
+    ...(byItemId.get('opex') ?? []),
+    ...(byItemId.get('__ungrouped__') ?? []),
+  ];
+  if (ungroupedItems.length) byItemId.set('__ungrouped__', ungroupedItems);
+
   const allGroups = [
     ...plGroups,
     ...extraIds.map(id => ({ id, label: id })),
+    ...(ungroupedItems.length ? [{ id: '__ungrouped__', label: 'Sonstiges' }] : []),
   ];
 
   let grandTotal = 0;
 
-  const groupCards = allGroups.map(groupDef => {
+  const groupCards = allGroups.map((groupDef, groupIdx) => {
     const groupId    = groupDef.id;
     const groupLabel = groupDef.label;
     const groupItems = byItemId.get(groupId) ?? [];
+    const accent     = OPEX_ACCENT_COLORS[groupIdx % OPEX_ACCENT_COLORS.length];
 
     let groupTotal = 0;
     for (const li of groupItems) {
       const ma = entryMap.get(li.id) || {};
       for (let m = 1; m <= 12; m++) {
         const pending = _pendingEdits[`${li.id}_${m}`];
-        const val = pending !== undefined ? pending : (ma[m] ?? 0);
-        groupTotal += val;
+        groupTotal += pending !== undefined ? pending : (ma[m] ?? 0);
       }
     }
     grandTotal += groupTotal;
@@ -349,14 +354,14 @@ function renderOpexGrouped(items, entryMap, locked) {
       const isExpanded = _opexExpanded.has(li.id);
 
       const monthInputs = isExpanded ? `
-        <div class="opex-months-row">
+        <div class="opex-months-grid">
           ${Array.from({ length: 12 }, (_, i) => {
             const m   = i + 1;
             const pending = _pendingEdits[`${li.id}_${m}`];
             const val = pending !== undefined ? pending : (ma[m] ?? 0);
             const isDirty = pending !== undefined;
             return `<div class="opex-month-cell">
-              <div class="opex-month-label">${MONTH_SHORT[i]}</div>
+              <label class="opex-month-label">${MONTH_SHORT[i]}</label>
               <input type="text" class="opex-month-input ${isDirty ? 'pg-dirty' : ''}"
                      value="${val !== 0 ? formatInputVal(val) : ''}"
                      placeholder="0"
@@ -368,12 +373,6 @@ function renderOpexGrouped(items, entryMap, locked) {
           }).join('')}
         </div>` : '';
 
-      const editActions = !locked ? `
-        <button class="opex-expand-btn ${isExpanded ? 'active' : ''}"
-                onclick="planToggleOpexMonths(${li.id})"
-                title="${isExpanded ? 'Monate einklappen' : 'Monate bearbeiten'}">≡</button>
-        <button class="opex-del-btn" onclick="planDeleteLineItem(${li.id})" title="Löschen">✕</button>` : '';
-
       const nameEl = locked
         ? `<span class="opex-row-name">${esc(li.label)}</span>`
         : `<span class="opex-row-name editable"
@@ -383,8 +382,22 @@ function renderOpexGrouped(items, entryMap, locked) {
                 onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
               >${esc(li.label)}</span>`;
 
+      const editActions = !locked ? `
+        <div class="opex-row-actions">
+          <button class="btn-icon btn-icon-expand ${isExpanded ? 'active' : ''}"
+                  onclick="planToggleOpexMonths(${li.id})"
+                  title="${isExpanded ? 'Monate einklappen' : 'Monate bearbeiten'}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          </button>
+          <button class="btn-icon btn-icon-del"
+                  onclick="planDeleteLineItem(${li.id})"
+                  title="Löschen">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+          </button>
+        </div>` : '';
+
       return `
-        <div class="opex-row" id="opex-row-${li.id}">
+        <div class="opex-row ${isExpanded ? 'opex-row-expanded' : ''}" id="opex-row-${li.id}">
           <div class="opex-row-main">
             ${editActions}
             ${nameEl}
@@ -395,17 +408,21 @@ function renderOpexGrouped(items, entryMap, locked) {
     }).join('');
 
     const addBtn = !locked
-      ? `<button class="opex-add-row-btn" onclick="planAddLineItem('${groupId}')">+ Position</button>`
+      ? `<button class="opex-add-row-btn" data-group="${esc(groupId)}" onclick="planAddLineItem('${esc(groupId)}')">+ Position</button>`
       : '';
 
     return `
-      <div class="opex-group-card">
+      <div class="opex-group-card" style="--group-accent:${accent}">
         <div class="opex-group-header">
-          <span class="opex-group-name">${esc(groupLabel)}</span>
+          <div class="opex-group-title">
+            <span class="opex-group-dot"></span>
+            <span class="opex-group-name">${esc(groupLabel)}</span>
+            <span class="opex-group-count">${groupItems.length}</span>
+          </div>
           <span class="opex-group-total ${groupTotal === 0 ? 'zero' : ''}">${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</span>
         </div>
         <div class="opex-group-body">
-          ${rows || (locked ? '<div class="opex-empty">Keine Positionen</div>' : '')}
+          ${!groupItems.length && locked ? '<div class="opex-empty">Keine Positionen</div>' : rows}
           ${addBtn}
         </div>
       </div>`;
@@ -413,7 +430,12 @@ function renderOpexGrouped(items, entryMap, locked) {
 
   return `
     <div class="opex-view">
-      <div class="opex-grand-total">Gesamt OpEx: <strong>${fmtCell(grandTotal)}</strong></div>
+      <div class="opex-toolbar">
+        <div class="opex-grand-total-bar">
+          <span class="opex-grand-label">Gesamt OpEx</span>
+          <strong class="opex-grand-value">${grandTotal !== 0 ? fmtCell(grandTotal) : '—'}</strong>
+        </div>
+      </div>
       <div class="opex-groups">${groupCards.join('')}</div>
     </div>`;
 }
@@ -432,14 +454,13 @@ export async function planSaveLineName(liId, el) {
     await updatePlanLineItem(_currentVersion.id, liId, { label: newLabel });
     li.label = newLabel;
   } catch (e) {
-    el.textContent = li.label; // revert on error
+    el.textContent = li.label;
     showToast('Fehler: ' + e.message);
   }
 }
 
 function gridRow(li, monthAmounts, locked) {
   const cat   = li.category;
-  const color = CAT_COLOR[cat] || '#6b7280';
 
   let rowTotal = 0;
   const cells = [];
@@ -471,8 +492,13 @@ function gridRow(li, monthAmounts, locked) {
 
   const actionBtns = !locked ? `
     <span class="pg-row-actions">
-      ${cat === 'revenue' ? `<button class="pg-driver-btn" onclick="openDriverModal(${li.id})" title="Revenue-Treiber">⚙</button>` : ''}
-      <button class="pg-del-btn" onclick="planDeleteLineItem(${li.id})" title="Löschen">✕</button>
+      ${cat === 'revenue' ? `
+        <button class="btn-icon btn-icon-driver" onclick="openDriverModal(${li.id})" title="Revenue-Treiber">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+        </button>` : ''}
+      <button class="btn-icon btn-icon-del" onclick="planDeleteLineItem(${li.id})" title="Löschen">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
     </span>` : '';
 
   const nameEl = locked
@@ -527,7 +553,6 @@ export function planCellKeydown(e, input) {
   if (e.key === 'Enter') {
     e.preventDefault();
     input.blur();
-    // Move to next month in same row
     const m = parseInt(input.dataset.month);
     if (m < 12) {
       const next = document.querySelector(`input[data-li="${input.dataset.li}"][data-month="${m + 1}"]`);
@@ -536,19 +561,17 @@ export function planCellKeydown(e, input) {
   }
   if (e.key === 'Tab') {
     commitCell(input);
-    // default Tab behaviour moves focus naturally
   }
   if (e.key === 'Escape') {
     const liId  = parseInt(input.dataset.li);
     const month = parseInt(input.dataset.month);
     const key   = `${liId}_${month}`;
     delete _pendingEdits[key];
-    // Restore original value
-    const li         = _lineItems.find(l => l.id === liId);
     const entryMap   = buildEntryMap();
     const orig       = (entryMap.get(liId) || {})[month] ?? 0;
     input.value      = orig !== 0 ? formatInputVal(orig) : '';
-    input.closest('td').classList.remove('pg-dirty');
+    const cell = input.closest('td') ?? input.closest('.opex-month-cell');
+    cell?.classList.remove('pg-dirty');
     updateSaveButton();
     input.blur();
   }
@@ -557,19 +580,16 @@ export function planCellKeydown(e, input) {
 function commitCell(input) {
   const liId  = parseInt(input.dataset.li);
   const month = parseInt(input.dataset.month);
-  // Strip de-DE thousand separators (.) then convert decimal comma to dot
   const raw   = input.value.trim().replace(/\./g, '').replace(',', '.');
   const val   = raw === '' ? 0 : parseFloat(raw);
 
   if (isNaN(val)) {
-    // Reset to existing
     const orig = (buildEntryMap().get(liId) || {})[month] ?? 0;
     input.value = orig !== 0 ? formatInputVal(orig) : '';
     return;
   }
 
   const key = `${liId}_${month}`;
-  // Only dirty if different from persisted value
   const persisted = (buildEntryMap().get(liId) || {})[month] ?? 0;
   if (Math.abs(val - persisted) < 0.001) {
     delete _pendingEdits[key];
@@ -581,7 +601,6 @@ function commitCell(input) {
   const cell = input.closest('td') ?? input.closest('.opex-month-cell');
   cell?.classList.toggle('pg-dirty', _pendingEdits[key] !== undefined);
 
-  // Update row total and column total inline
   updateRowTotal(liId);
   updateColTotal(month);
   updateGrandTotal();
@@ -595,16 +614,13 @@ function updateRowTotal(liId) {
     const pending = _pendingEdits[`${liId}_${m}`];
     rowTotal += pending !== undefined ? pending : ((entryMap.get(liId) || {})[m] ?? 0);
   }
-  // Grid view
   const cell = document.querySelector(`#pgrow-${liId} .pg-total-cell`);
   if (cell) cell.textContent = fmtCell(rowTotal);
-  // OpEx card view
   const cardTotal = document.querySelector(`#opex-row-${liId} .opex-row-total`);
   if (cardTotal) {
     cardTotal.textContent = rowTotal !== 0 ? fmtCell(rowTotal) : '—';
     cardTotal.classList.toggle('zero', rowTotal === 0);
   }
-  // Update group header total and grand total for opex
   if (_categoryFilter === 'opex') updateOpexGroupTotals();
 }
 
@@ -612,10 +628,9 @@ function updateOpexGroupTotals() {
   const entryMap = buildEntryMap();
   const opexItems = _lineItems.filter(li => li.category === 'opex');
   let grand = 0;
-  // Group by item_id
   const byItemId = new Map();
   for (const li of opexItems) {
-    const key = li.item_id || 'opex';
+    const key = li.item_id || '__ungrouped__';
     if (!byItemId.has(key)) byItemId.set(key, []);
     byItemId.get(key).push(li);
   }
@@ -628,10 +643,9 @@ function updateOpexGroupTotals() {
       }
     }
     grand += groupTotal;
-    // Find and update the group header total — identify by data attribute set on header
     document.querySelectorAll(`.opex-group-card`).forEach(card => {
       const addBtn = card.querySelector(`.opex-add-row-btn`);
-      if (addBtn && addBtn.getAttribute('onclick')?.includes(`'${itemId}'`)) {
+      if (addBtn && addBtn.dataset.group === itemId) {
         const tot = card.querySelector('.opex-group-total');
         if (tot) {
           tot.textContent = groupTotal !== 0 ? fmtCell(groupTotal) : '—';
@@ -640,12 +654,12 @@ function updateOpexGroupTotals() {
       }
     });
   }
-  const grandEl = document.querySelector('.opex-grand-total strong');
-  if (grandEl) grandEl.textContent = fmtCell(grand);
+  const grandEl = document.querySelector('.opex-grand-value');
+  if (grandEl) grandEl.textContent = grand !== 0 ? fmtCell(grand) : '—';
 }
 
 function updateColTotal(month) {
-  if (_categoryFilter === 'opex') return; // opex card has no column totals
+  if (_categoryFilter === 'opex') return;
   const entryMap = buildEntryMap();
   const items = _lineItems.filter(li => li.category === _categoryFilter);
   let colTotal = 0;
@@ -676,8 +690,7 @@ function updateGrandTotal() {
 function updateSaveButton() {
   const btn = document.getElementById('plan-save-btn');
   if (!btn) return;
-  const hasPending = Object.keys(_pendingEdits).length > 0;
-  btn.classList.toggle('hidden', !hasPending);
+  btn.disabled = Object.keys(_pendingEdits).length === 0;
 }
 
 // ── Save edits ────────────────────────────────────────────────────────
@@ -689,7 +702,6 @@ export async function planSaveEdits() {
   if (btn) { btn.disabled = true; btn.textContent = '…'; }
 
   try {
-    // Group pending edits by line item
     const byLineItem = {};
     for (const [key, amount] of Object.entries(_pendingEdits)) {
       const [liId, month] = key.split('_').map(Number);
@@ -698,13 +710,11 @@ export async function planSaveEdits() {
       if (li) byLineItem[liId].push({ month, year: _currentVersion.year, amount, item_id: li.item_id });
     }
 
-    // Upsert each line item's entries
     const promises = Object.entries(byLineItem).map(([liId, entries]) =>
       upsertPlanEntries(_currentVersion.id, entries.map(e => ({ ...e, line_item_id: parseInt(liId) })))
     );
     await Promise.all(promises);
 
-    // Merge saved edits into _entries
     for (const [key, amount] of Object.entries(_pendingEdits)) {
       const [liId, month] = key.split('_').map(Number);
       const existing = _entries.find(e => e.line_item_id === liId && e.month === month);
@@ -718,7 +728,6 @@ export async function planSaveEdits() {
 
     _pendingEdits = {};
     updateSaveButton();
-    // Clear dirty flags
     document.querySelectorAll('.pg-dirty').forEach(el => el.classList.remove('pg-dirty'));
     showToast('Gespeichert');
   } catch (e) {
@@ -726,12 +735,13 @@ export async function planSaveEdits() {
   } finally {
     _saving = false;
     if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
+    updateSaveButton();
   }
 }
 
 // ── Add line item ─────────────────────────────────────────────────────
 
-let _plmDriverMode = 'management_fee'; // 'management_fee' | 'one_off' | 'manual'
+let _plmDriverMode = 'management_fee';
 
 export function planAddLineItem(opexItemId = null) {
   const m = document.getElementById('plan-lineitem-modal');
@@ -745,7 +755,6 @@ export function planAddLineItem(opexItemId = null) {
   document.getElementById('plm-itemid').value   = opexItemId || cat;
   document.getElementById('plm-error').textContent = '';
 
-  // Hide category row — locked to current tab
   const catRow = document.getElementById('plm-category-row');
   if (catRow) catRow.style.display = 'none';
   const labelEl = document.getElementById('plm-tab-label');
@@ -753,8 +762,9 @@ export function planAddLineItem(opexItemId = null) {
 
   _plmDriverMode = 'management_fee';
   plmCategoryChanged();
-  // Restore specific item_id after plmCategoryChanged overwrites it with the category
   if (opexItemId) document.getElementById('plm-itemid').value = opexItemId;
+
+  setTimeout(() => document.getElementById('plm-label')?.focus(), 50);
 }
 
 export function closeLineItemModalAndCleanup() {
@@ -816,7 +826,6 @@ export async function submitAddLineItem() {
   errEl.textContent = '';
   if (!label) { errEl.textContent = 'Bezeichnung erforderlich.'; return; }
 
-  // Validate driver fields for revenue items before touching the DB
   let driverPayload = null;
   if (category === 'revenue' && _plmDriverMode !== 'manual') {
     if (_plmDriverMode === 'management_fee') {
@@ -841,15 +850,17 @@ export async function submitAddLineItem() {
     });
     _lineItems.push(li);
 
-    // Create driver and immediately generate entries
     if (driverPayload) {
       await createRevenueDriver(li.id, driverPayload);
       const result = await generateFromDrivers(li.id);
-      // Merge generated entries into local state
       for (const e of result.entries ?? []) _entries.push(e);
     }
 
     closeLineItemModal();
+
+    // OpEx: auto-expand so user can enter monthly amounts immediately
+    if (category === 'opex') _opexExpanded.add(li.id);
+
     renderGrid();
     showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt');
   } catch (e) {
@@ -859,15 +870,13 @@ export async function submitAddLineItem() {
   }
 }
 
-// ── Delete line item ──────────────────────────────────────────────────
+// ── Delete line item (no browser confirm) ─────────────────────────────
 
 export async function planDeleteLineItem(id) {
-  if (!confirm('Position löschen? Alle Planwerte gehen verloren.')) return;
   try {
     await deletePlanLineItem(_currentVersion.id, id);
     _lineItems = _lineItems.filter(li => li.id !== id);
     _entries   = _entries.filter(e => e.line_item_id !== id);
-    // Remove pending edits for this line item
     for (const key of Object.keys(_pendingEdits)) {
       if (key.startsWith(`${id}_`)) delete _pendingEdits[key];
     }
@@ -878,24 +887,53 @@ export async function planDeleteLineItem(id) {
   }
 }
 
+// ── Delete version (inline confirm in header) ─────────────────────────
+
+export function planConfirmDeleteVersion(id) {
+  const el = document.getElementById('plan-detail-header');
+  if (!el) return;
+  const delBtn = el.querySelector('.btn-danger-outline');
+  if (!delBtn) return;
+  delBtn.outerHTML = `
+    <span class="inline-confirm">
+      <span class="inline-confirm-label">Wirklich löschen?</span>
+      <button class="btn-sm btn-danger" onclick="planDeleteVersionConfirmed(${id})">Ja, löschen</button>
+      <button class="btn-sm" onclick="renderDetailHeader()">Abbrechen</button>
+    </span>`;
+}
+
+export async function planDeleteVersionConfirmed(id) {
+  try {
+    await (await import('../lib/db.js')).deletePlanVersion(id);
+    showToast('Version gelöscht');
+    planBackToList();
+    await loadVersions();
+  } catch (e) {
+    showToast('Fehler: ' + e.message);
+  }
+}
+
 // ── Category filter ───────────────────────────────────────────────────
 
 export function planSetCategory(cat) {
   if (Object.keys(_pendingEdits).length > 0) {
-    if (!confirm('Ungespeicherte Änderungen verwerfen?')) return;
-    _pendingEdits = {};
+    // Auto-save when switching tabs
+    planSaveEdits().then(() => {
+      _categoryFilter = cat;
+      renderCategoryFilter();
+      renderGrid();
+    });
+    return;
   }
   _categoryFilter = cat;
   renderCategoryFilter();
   renderGrid();
 }
 
-// ── Lock / unlock version ─────────────────────────────────────────────
+// ── Lock / unlock version (no confirm for unlock) ─────────────────────
 
 export async function planLockVersion(id) {
   const locked = !!_currentVersion.locked_at;
-  const msg    = locked ? 'Version entsperren?' : 'Version sperren? Danach sind keine Änderungen mehr möglich.';
-  if (!confirm(msg)) return;
   try {
     const updated = await lockPlanVersion(id, !locked);
     _currentVersion = { ..._currentVersion, ...updated };
@@ -907,26 +945,11 @@ export async function planLockVersion(id) {
   }
 }
 
-// ── Delete version ────────────────────────────────────────────────────
-
-export async function planDeleteVersion(id) {
-  if (!confirm('Version dauerhaft löschen? Alle Daten gehen verloren.')) return;
-  try {
-    await (await import('../lib/db.js')).deletePlanVersion(id);
-    showToast('Version gelöscht');
-    planBackToList();
-    await loadVersions();
-  } catch (e) {
-    showToast('Fehler: ' + e.message);
-  }
-}
-
 // ── Navigation ────────────────────────────────────────────────────────
 
 export function planBackToList() {
   if (Object.keys(_pendingEdits).length > 0) {
-    if (!confirm('Ungespeicherte Änderungen verwerfen?')) return;
-    _pendingEdits = {};
+    planSaveEdits();
   }
   _currentVersion = null;
   _lineItems = [];
@@ -944,7 +967,7 @@ function showView(name) {
 
 // ── Scenario Comparison ───────────────────────────────────────────────
 
-let _cmpVersions  = [];   // all available versions (same year)
+let _cmpVersions  = [];
 let _cmpIdA       = null;
 let _cmpIdB       = null;
 
@@ -975,7 +998,6 @@ function renderCompareSelectors() {
   selA.innerHTML = `<option value="">— Version A —</option>${opts}`;
   selB.innerHTML = `<option value="">— Version B —</option>${opts}`;
 
-  // Restore previous selection if still valid
   if (_cmpIdA) selA.value = _cmpIdA;
   if (_cmpIdB) selB.value = _cmpIdB;
 }
@@ -999,7 +1021,6 @@ export async function runComparison() {
   if (el) el.innerHTML = `<div class="plan-loading">Berechne…</div>`;
 
   try {
-    // Load both versions in parallel
     const [[liA, liB], [entA, entB]] = await Promise.all([
       Promise.all([
         getPlanLineItems(_cmpIdA, { activeOnly: false }),
@@ -1069,7 +1090,6 @@ function renderCompareTable(rows, vA, vB) {
       </tr>`;
   }).join('');
 
-  // Monthly delta summary rows (one row = all months, showing B-A delta)
   const deltaRows = rows.map(row => {
     const isEbitda = row.computed;
     const cells = Array.from({ length: 12 }, (_, i) => {
@@ -1270,7 +1290,6 @@ export async function driverGenerate() {
   if (btn) btn.disabled = true;
   try {
     const result = await generateFromDrivers(_driverLineItemId);
-    // Reload entries so the grid reflects generated amounts
     _entries = await (await import('../lib/db.js')).getPlanEntries(_currentVersion.id);
     renderGrid();
     showToast(`${result.entries?.length ?? 0} Einträge generiert.`);
@@ -1282,11 +1301,11 @@ export async function driverGenerate() {
 }
 
 export async function driverDelete(driverId) {
-  if (!confirm('Driver löschen?')) return;
   try {
     await deleteRevenueDriver(_driverLineItemId, driverId);
     _driverList = _driverList.filter(d => d.id !== driverId);
     _renderDriverList();
+    showToast('Driver gelöscht');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -1331,7 +1350,6 @@ function _resetDriverForm() {
 }
 
 function _renderDriverList() {
-  // Render existing drivers above the form inside the modal body
   let existing = document.getElementById('pdm-existing-list');
   if (!existing) {
     existing = document.createElement('div');
@@ -1341,7 +1359,6 @@ function _renderDriverList() {
     body.insertBefore(existing, body.firstChild);
   }
 
-  // Generate button
   const hasDrivers = _driverList.length > 0;
   const genBtn = hasDrivers
     ? `<button id="pdm-gen-btn" class="btn-plan-primary" style="font-size:.75rem;padding:.3rem .75rem" onclick="driverGenerate()">
@@ -1380,8 +1397,12 @@ function _renderDriverList() {
               <td style="padding:.3rem .4rem;text-align:right;color:#4f6ef7;font-weight:700">${FMT_EUR.format(annualAmt)}</td>
               <td style="padding:.3rem .4rem;text-align:right;color:#6b7a99">${FMT_EUR.format(annualAmt / 12)}</td>
               <td style="padding:.3rem .4rem;text-align:right;white-space:nowrap">
-                <button class="btn-sm" style="font-size:.68rem;padding:.15rem .4rem" onclick="driverEdit(${d.id})">✎</button>
-                <button class="btn-sm" style="font-size:.68rem;padding:.15rem .4rem;color:#dc2626;border-color:#fecaca" onclick="driverDelete(${d.id})">✕</button>
+                <button class="btn-icon btn-icon-edit" onclick="driverEdit(${d.id})" title="Bearbeiten">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                </button>
+                <button class="btn-icon btn-icon-del" onclick="driverDelete(${d.id})" title="Löschen">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                </button>
               </td>
             </tr>`;
         }).join('')}

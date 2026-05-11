@@ -1,5 +1,5 @@
 /**
- * Actuals vs Plan (Ist/Plan) comparison view.
+ * Actuals vs Plan (Ist/Plan) comparison view — with line-item drill-down.
  *
  * Combines:
  *   - Actuals from APP.plData.periodPLs  (already computed by the P&L engine)
@@ -22,17 +22,21 @@ import { showToast } from './screen.js';
 
 // ── Module state ──────────────────────────────────────────────────────
 
-let _versions    = [];
-let _selVersion  = null;
-let _selYear     = null;
-let _upToMonth   = null;  // null = full year; 1-12 = YTD up to this month
+let _versions     = [];
+let _selVersion   = null;
+let _selYear      = null;
+let _upToMonth    = null;
+let _lineItems    = [];   // line items for selected plan version
+let _entries      = [];   // entries for selected plan version
+let _expandedRows = new Set();  // category keys that are drilled down
 
 // ── Entry point ───────────────────────────────────────────────────────
 
 export async function openAvpScreen() {
-  _selYear    = currentYear();
-  _selVersion = null;
-  _upToMonth  = latestActualMonth();
+  _selYear      = currentYear();
+  _selVersion   = null;
+  _upToMonth    = latestActualMonth();
+  _expandedRows = new Set();
 
   await loadVersionList();
   populateYearSelector();
@@ -110,6 +114,7 @@ export function avpChangeYear() {
   const sel = document.getElementById('avp-year-sel');
   _selYear = parseInt(sel?.value) || null;
   _selVersion = null;
+  _expandedRows = new Set();
   populateVersionSelector();
   renderAvpContent();
 }
@@ -117,6 +122,7 @@ export function avpChangeYear() {
 export function avpChangeVersion() {
   const sel = document.getElementById('avp-version-sel');
   _selVersion = parseInt(sel?.value) || null;
+  _expandedRows = new Set();
   renderAvpContent();
 }
 
@@ -124,6 +130,12 @@ export function avpChangeMonth() {
   const sel = document.getElementById('avp-month-sel');
   const v = parseInt(sel?.value);
   _upToMonth = (!v || v >= 12) ? null : v;
+  renderAvpContent();
+}
+
+export function avpToggleDrilldown(key) {
+  if (_expandedRows.has(key)) _expandedRows.delete(key);
+  else _expandedRows.add(key);
   renderAvpContent();
 }
 
@@ -162,6 +174,9 @@ async function renderAvpContent() {
       getPlanLineItems(_selVersion, { activeOnly: false }),
       getPlanEntries(_selVersion),
     ]);
+
+    _lineItems = lineItems;
+    _entries   = entries;
 
     const planMonthly = aggregateByCategory(lineItems, entries);
     const rows        = compareVersions(actualMonthly, planMonthly);
@@ -261,36 +276,50 @@ function renderTable(rows, periodPLs, upTo) {
     `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`
   ).join('') + `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`;
 
-  const bodyRows = rows.map(row => {
-    const isEbitda = row.computed;
-    const rowClass = isEbitda ? 'avp-row avp-row-ebitda' : 'avp-row';
+  const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
+
+  // Build entry map for drill-down
+  const liEntryMap = new Map();
+  for (const e of _entries) {
+    if (!liEntryMap.has(e.line_item_id)) liEntryMap.set(e.line_item_id, {});
+    liEntryMap.get(e.line_item_id)[e.month] = Number(e.amount);
+  }
+
+  const bodyRows = rows.flatMap(row => {
+    const isEbitda    = row.computed;
+    const isDrillable = drillableKeys.has(row.key);
+    const isExpanded  = _expandedRows.has(row.key);
+    const rowClass    = isEbitda ? 'avp-row avp-row-ebitda' : 'avp-row';
 
     const monthlyCells = visibleMonths.map(m => {
-      const cell   = row.monthly[m] ?? { a: 0, b: 0, delta: 0, pct: null };
+      const cell   = row.monthly[m] ?? { a: 0, b: 0 };
       const ist    = cell.a;
       const plan   = cell.b;
-      const delta  = cell.delta;   // plan - actual (b - a)
-      // flip: we want actual - plan, so delta_istvplan = actual - plan = -cell.delta
       const ivp    = round2(ist - plan);
-      const ivpCls = isEbitda
-        ? (ivp >= 0 ? 'pos' : 'neg')
-        : (ivp <= 0 ? 'pos' : 'neg');  // cost: under plan = good (pos colour)
+      const ivpCls = isEbitda ? (ivp >= 0 ? 'pos' : 'neg') : (ivp <= 0 ? 'pos' : 'neg');
       return `
         <td class="avp-cell ist">${fmtActual(ist)}</td>
         <td class="avp-cell plan">${fmtActual(plan)}</td>
         <td class="avp-cell delta avp-delta-${ivpCls}">${fmtDelta(ivp)}</td>`;
     }).join('');
 
-    // YTD columns
-    const ytdAct  = ytdActual[row.key] ?? 0;
-    const ytdPl   = ytdPlan[row.key]   ?? 0;
-    const ytdIvp  = round2(ytdAct - ytdPl);
-    const ytdPct  = ytdPl !== 0 ? ((ytdIvp / Math.abs(ytdPl)) * 100).toFixed(1) : null;
-    const ytdCls  = isEbitda ? (ytdIvp >= 0 ? 'pos' : 'neg') : (ytdIvp <= 0 ? 'pos' : 'neg');
+    const ytdAct = ytdActual[row.key] ?? 0;
+    const ytdPl  = ytdPlan[row.key]   ?? 0;
+    const ytdIvp = round2(ytdAct - ytdPl);
+    const ytdPct = ytdPl !== 0 ? ((ytdIvp / Math.abs(ytdPl)) * 100).toFixed(1) : null;
+    const ytdCls = isEbitda ? (ytdIvp >= 0 ? 'pos' : 'neg') : (ytdIvp <= 0 ? 'pos' : 'neg');
 
-    return `
-      <tr class="${rowClass}">
-        <td class="avp-label">${esc(row.label)}</td>
+    const drillChevron = isDrillable ? `
+      <span class="avp-drill-chevron ${isExpanded ? 'expanded' : ''}">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="${isExpanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}"/></svg>
+      </span>` : `<span class="avp-drill-chevron-placeholder"></span>`;
+
+    const mainRow = `
+      <tr class="${rowClass} ${isDrillable ? 'avp-row-drillable' : ''}"
+          ${isDrillable ? `onclick="avpToggleDrilldown('${row.key}')"` : ''}>
+        <td class="avp-label">
+          ${drillChevron}${esc(row.label)}
+        </td>
         ${monthlyCells}
         <td class="avp-cell ist avp-ytd">${fmtActual(ytdAct)}</td>
         <td class="avp-cell plan avp-ytd">${fmtActual(ytdPl)}</td>
@@ -299,6 +328,51 @@ function renderTable(rows, periodPLs, upTo) {
           ${ytdPct !== null ? `<br><span class="avp-pct">${ytdIvp >= 0 ? '+' : ''}${ytdPct}%</span>` : ''}
         </td>
       </tr>`;
+
+    if (!isDrillable || !isExpanded) return [mainRow];
+
+    // Drill-down: show individual line items (plan amounts only — no actuals at line-item level)
+    const catItems = _lineItems.filter(li => li.category === row.key);
+
+    if (!catItems.length) {
+      return [mainRow, `
+        <tr class="avp-drill-row">
+          <td class="avp-drill-label" colspan="${3 * visibleMonths.length + 4}" style="padding-left:2.5rem;color:#a0aabb;font-style:italic">
+            Keine Positionen definiert
+          </td>
+        </tr>`];
+    }
+
+    const drillRows = catItems.map(li => {
+      const liAmounts = liEntryMap.get(li.id) || {};
+
+      const liMonthlyCells = visibleMonths.map(m => {
+        const planAmt = liAmounts[m] ?? 0;
+        return `
+          <td class="avp-cell avp-drill-cell"></td>
+          <td class="avp-cell avp-drill-cell plan">${planAmt !== 0 ? fmtActual(planAmt) : '<span class="avp-zero">—</span>'}</td>
+          <td class="avp-cell avp-drill-cell"></td>`;
+      }).join('');
+
+      const liYtd = Object.entries(liAmounts)
+        .filter(([m]) => parseInt(m) <= upTo)
+        .reduce((s, [, v]) => s + v, 0);
+
+      return `
+        <tr class="avp-drill-row">
+          <td class="avp-drill-label">
+            <span class="avp-drill-indent">↳</span>
+            ${esc(li.label)}
+            ${li.entity ? `<span class="avp-drill-tag">${esc(li.entity)}</span>` : ''}
+          </td>
+          ${liMonthlyCells}
+          <td class="avp-cell avp-drill-cell avp-ytd"></td>
+          <td class="avp-cell avp-drill-cell plan avp-ytd">${liYtd !== 0 ? fmtActual(liYtd) : '<span class="avp-zero">—</span>'}</td>
+          <td class="avp-cell avp-drill-cell avp-ytd"></td>
+        </tr>`;
+    });
+
+    return [mainRow, ...drillRows];
   }).join('');
 
   return `

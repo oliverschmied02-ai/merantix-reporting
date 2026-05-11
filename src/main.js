@@ -18,14 +18,15 @@ import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelect
 import { handleFile, removeFile, updateSidebarBadge, refreshYears, updateTopCompany } from './lib/file-handler.js';
 import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
-import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonth } from './ui/avp.js';
+import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonth, avpToggleDrilldown } from './ui/avp.js';
 import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
   planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
-  planLockVersion, planDeleteVersion,
+  planLockVersion, renderDetailHeader,
+  planConfirmDeleteVersion, planDeleteVersionConfirmed,
   planToggleOpexMonths, planSaveLineName,
   openCompareScreen, runComparison,
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
@@ -72,14 +73,15 @@ Object.assign(window, {
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
-  planLockVersion, planDeleteVersion,
+  planLockVersion, renderDetailHeader,
+  planConfirmDeleteVersion, planDeleteVersionConfirmed,
   planToggleOpexMonths, planSaveLineName,
   openCompareScreen, runComparison,
   // Revenue drivers
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
   submitDriver, driverGenerate, driverDelete, driverEdit,
   // Actuals vs Plan
-  avpChangeYear, avpChangeVersion, avpChangeMonth,
+  avpChangeYear, avpChangeVersion, avpChangeMonth, avpToggleDrilldown,
   // Personnel / headcount
   openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel,
 });

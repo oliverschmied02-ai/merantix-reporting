@@ -1403,3 +1403,214 @@ textarea.plan-input { resize: vertical; }
 }
 .hc-btn-del { color: #dc2626 !important; border-color: #fecaca !important; }
 .hc-btn-del:hover { background: #fee2e2 !important; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   Consistent icon buttons
+   ═══════════════════════════════════════════════════════════════════ */
+
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid #e4e9f5;
+  background: #fff; cursor: pointer; color: #6b7a99;
+  transition: all .15s; padding: 0; flex-shrink: 0;
+}
+.btn-icon:hover { background: #f4f6fb; color: #1e2433; border-color: #c7d2fe; }
+
+.btn-icon-del:hover    { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.btn-icon-edit:hover   { background: #eef1fb; color: #4f6ef7; border-color: #c7d2fe; }
+.btn-icon-driver:hover { background: #f0fdf4; color: #16a34a; border-color: #86efac; }
+.btn-icon-expand       { color: #6b7a99; }
+.btn-icon-expand.active,
+.btn-icon-expand:hover { background: #eef1fb; color: #4f6ef7; border-color: #c7d2fe; }
+
+/* Danger outline button */
+.btn-danger-outline {
+  color: #dc2626; border: 1px solid #fca5a5; background: transparent;
+  border-radius: 6px; padding: .3rem .75rem; font-size: .78rem;
+  cursor: pointer; font-weight: 600; transition: all .15s;
+}
+.btn-danger-outline:hover { background: #fee2e2; }
+
+.btn-danger {
+  background: #dc2626; color: #fff; border: none; border-radius: 6px;
+  padding: .3rem .75rem; font-size: .78rem; cursor: pointer; font-weight: 600;
+  transition: background .15s;
+}
+.btn-danger:hover { background: #b91c1c; }
+
+/* Inline delete confirmation */
+.inline-confirm {
+  display: inline-flex; align-items: center; gap: .4rem;
+  background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;
+  padding: .2rem .6rem; animation: fadeIn .15s ease;
+}
+.inline-confirm-label {
+  font-size: .75rem; color: #c2410c; font-weight: 600;
+}
+
+/* Save button — always visible, disabled when no changes */
+.btn-plan-save {
+  background: #4f6ef7; color: #fff; border: none; border-radius: 6px;
+  padding: .35rem .9rem; font-size: .8rem; cursor: pointer; font-weight: 600;
+  transition: all .15s; opacity: 1;
+}
+.btn-plan-save:disabled {
+  background: #e4e9f5; color: #a0aabb; cursor: default; opacity: 1;
+}
+.btn-plan-save:not(:disabled):hover { background: #3b55e0; }
+
+/* Add button left-aligned */
+.plan-grid-actions { padding: .5rem 0 .25rem; }
+.plan-grid-actions-left { text-align: left; }
+.plan-empty-row { display: flex; align-items: center; gap: .75rem; justify-content: flex-start; padding: 1.5rem 1rem; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   OpEx redesign — card groups with accent
+   ═══════════════════════════════════════════════════════════════════ */
+
+.opex-view { display: flex; flex-direction: column; gap: .75rem; padding: 1rem 1.5rem 2rem; }
+
+.opex-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .25rem;
+}
+.opex-grand-total-bar {
+  display: flex; align-items: baseline; gap: .5rem;
+}
+.opex-grand-label { font-size: .78rem; color: #6b7a99; font-weight: 600; }
+.opex-grand-value { font-size: 1.2rem; font-weight: 700; color: #1e2433; font-variant-numeric: tabular-nums; }
+
+.opex-groups {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: .75rem;
+}
+
+.opex-group-card {
+  background: #fff; border-radius: 12px;
+  border: 1px solid #e4e9f5;
+  border-left: 4px solid var(--group-accent, #4f6ef7);
+  box-shadow: 0 1px 4px rgba(30,36,51,.05);
+  overflow: hidden;
+}
+
+.opex-group-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .65rem 1rem; background: #fafbfd;
+  border-bottom: 1px solid #f0f2f8;
+}
+.opex-group-title { display: flex; align-items: center; gap: .5rem; }
+.opex-group-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--group-accent, #4f6ef7); flex-shrink: 0;
+}
+.opex-group-name { font-size: .82rem; font-weight: 700; color: #1e2433; }
+.opex-group-count {
+  font-size: .68rem; color: #a0aabb; background: #f0f2f8;
+  border-radius: 10px; padding: .1rem .4rem; font-weight: 600;
+}
+.opex-group-total { font-size: .88rem; font-weight: 700; color: #1e2433; font-variant-numeric: tabular-nums; }
+.opex-group-total.zero { color: #d1d8e8; }
+
+.opex-group-body { padding: .4rem 0; }
+
+.opex-row { border-bottom: 1px solid #f8f9fd; }
+.opex-row:last-of-type { border-bottom: none; }
+.opex-row-expanded { background: #fafbff; }
+
+.opex-row-main {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .45rem 1rem; min-height: 38px;
+}
+
+.opex-row-actions { display: flex; align-items: center; gap: .25rem; flex-shrink: 0; }
+
+.opex-row-name {
+  flex: 1; font-size: .82rem; color: #1e2433; font-weight: 500;
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.opex-row-name.editable:hover { background: #f0f4ff; border-radius: 4px; padding: 0 .2rem; cursor: text; }
+.opex-row-name.editable:focus { outline: 2px solid #4f6ef7; border-radius: 4px; padding: 0 .2rem; }
+
+.opex-row-total {
+  font-size: .82rem; font-weight: 700; color: #1e2433; white-space: nowrap;
+  font-variant-numeric: tabular-nums; flex-shrink: 0;
+}
+.opex-row-total.zero { color: #d1d8e8; font-weight: 400; }
+
+/* Month grid */
+.opex-months-grid {
+  display: grid; grid-template-columns: repeat(6, 1fr);
+  gap: .35rem; padding: .5rem 1rem .75rem;
+  background: #f8f9fd; border-top: 1px solid #f0f2f8;
+  animation: slideDown .15s ease;
+}
+.opex-month-cell { display: flex; flex-direction: column; gap: .15rem; }
+.opex-month-label {
+  font-size: .6rem; font-weight: 600; color: #a0aabb;
+  text-align: center; text-transform: uppercase; letter-spacing: .04em;
+}
+.opex-month-input {
+  background: #fff; border: 1px solid #e4e9f5; border-radius: 5px;
+  padding: .28rem .3rem; font-size: .78rem; font-family: inherit;
+  text-align: right; color: #1e2433; width: 100%;
+  transition: border-color .15s; font-variant-numeric: tabular-nums;
+}
+.opex-month-input:focus { outline: none; border-color: #4f6ef7; background: #fafbff; }
+.opex-month-input.pg-dirty { border-color: #f59e0b; background: #fffbeb; }
+
+.opex-add-row-btn {
+  margin: .35rem 1rem .5rem; font-size: .75rem; color: #6b7a99;
+  background: none; border: 1px dashed #d1d8e8; border-radius: 6px;
+  padding: .3rem .65rem; cursor: pointer; width: calc(100% - 2rem);
+  transition: all .15s; display: block; text-align: center;
+}
+.opex-add-row-btn:hover { border-color: #4f6ef7; color: #4f6ef7; background: #eef1fb; }
+
+.opex-empty { padding: .75rem 1rem; font-size: .8rem; color: #a0aabb; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AVP drill-down rows
+   ═══════════════════════════════════════════════════════════════════ */
+
+.avp-row-drillable { cursor: pointer; }
+.avp-row-drillable:hover td { background: rgba(79,110,247,.04) !important; }
+.avp-row-drillable .avp-label { user-select: none; }
+
+.avp-drill-chevron {
+  display: inline-flex; align-items: center; margin-right: .35rem;
+  color: #a0aabb; transition: transform .15s; vertical-align: middle;
+  flex-shrink: 0;
+}
+.avp-drill-chevron.expanded { color: #4f6ef7; }
+.avp-drill-chevron-placeholder { display: inline-block; width: 18px; margin-right: .35rem; }
+
+.avp-drill-row td {
+  padding: .28rem .4rem; border-bottom: 1px solid #f8f9fd;
+  text-align: right; white-space: nowrap; vertical-align: middle;
+  background: #fafbff; font-size: .74rem;
+}
+.avp-drill-label {
+  text-align: left !important; color: #4b5563; font-weight: 500;
+  position: sticky; left: 0; background: #fafbff !important;
+  border-right: 1px solid #edf0f8; padding: .28rem .75rem !important;
+  z-index: 2;
+}
+.avp-drill-indent {
+  color: #a0aabb; margin-right: .35rem; font-size: .7rem;
+}
+.avp-drill-tag {
+  font-size: .65rem; background: #eef1fb; color: #4f6ef7;
+  border-radius: 4px; padding: .05rem .3rem; margin-left: .35rem;
+  font-weight: 600;
+}
+.avp-drill-cell.plan { color: #7c3aed; }
+.avp-drill-cell { color: #d1d8e8; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(.98); }
+  to   { opacity: 1; transform: scale(1); }
+}
