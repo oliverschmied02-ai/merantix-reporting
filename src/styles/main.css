@@ -860,9 +860,9 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 
 /* OpEx category dropdown */
 .pg-cat-select {
-  font-size: .72rem; font-family: inherit; color: #1e2433;
-  border: 1px solid #e4e9f5; border-radius: 6px; padding: .2rem .4rem;
-  background: #fff; cursor: pointer; max-width: 160px;
+  font-size: .66rem; font-family: inherit; color: #1e2433;
+  border: 1px solid #e4e9f5; border-radius: 5px; padding: .15rem .25rem;
+  background: #fff; cursor: pointer; max-width: 92px;
 }
 .pg-cat-select:hover  { border-color: #c3ccdf; }
 .pg-cat-select:focus  { outline: none; border-color: #4f6ef7; box-shadow: 0 0 0 2px rgba(79,110,247,.12); }
@@ -875,7 +875,7 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .pg-group-row td {
   background: #f4f6fb; font-weight: 700; color: #1e2433;
   border-top: 1px solid #e4e9f5; border-bottom: 1px solid #e4e9f5;
-  padding: .45rem .7rem; text-align: right; font-variant-numeric: tabular-nums;
+  padding: .3rem .35rem; text-align: right; font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .pg-group-row .pg-group-label { text-align: left !important; position: sticky; left: 0; background: #f4f6fb; z-index: 2; }
@@ -902,30 +902,30 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 /* Planning grid table */
 .plan-grid {
   border-collapse: separate; border-spacing: 0;
-  width: 100%; font-size: .78rem;
+  width: 100%; font-size: .72rem;
 }
 .plan-grid thead th {
   position: sticky; top: 0; background: #f4f6fb;
-  padding: .5rem .7rem; font-size: .62rem; font-weight: 700;
-  text-transform: uppercase; letter-spacing: .06em; color: #a0aabb;
+  padding: .4rem .35rem; font-size: .58rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .03em; color: #a0aabb;
   border-bottom: 2px solid #e4e9f5; white-space: nowrap;
   text-align: right; z-index: 5;
 }
-.plan-grid thead th.pg-pos { text-align: left; min-width: 220px; left: 0; z-index: 10; }
-.plan-grid thead th.pg-cat { text-align: left; min-width: 100px; white-space: nowrap; }
-.plan-grid thead th.pg-month { min-width: 80px; }
-.plan-grid thead th.pg-total { min-width: 90px; color: #4f6ef7; border-left: 2px solid #e4e9f5; }
-.plan-grid thead th.pg-actions { width: 36px; }
+.plan-grid thead th.pg-pos { text-align: left; min-width: 150px; left: 0; z-index: 10; }
+.plan-grid thead th.pg-cat { text-align: left; min-width: 78px; white-space: nowrap; }
+.plan-grid thead th.pg-month { min-width: 50px; }
+.plan-grid thead th.pg-total { min-width: 66px; color: #4f6ef7; border-left: 2px solid #e4e9f5; }
+.plan-grid thead th.pg-actions { width: 30px; }
 
 /* Grid rows */
 .pg-row { border-bottom: 1px solid #f0f2f8; }
 .pg-row:hover td { background: rgba(79,110,247,.025); }
-.pg-row td { padding: .4rem .7rem; text-align: right; vertical-align: middle; white-space: nowrap; }
+.pg-row td { padding: .25rem .35rem; text-align: right; vertical-align: middle; white-space: nowrap; }
 
 .pg-pos-cell {
   text-align: left !important; position: sticky; left: 0;
   background: #fff; border-right: 1px solid #edf0f8;
-  max-width: 260px; z-index: 2;
+  max-width: 190px; z-index: 2;
 }
 .pg-row:hover .pg-pos-cell { background: #f9fafe; }
 .pg-li-label { font-weight: 500; color: #1e2433; }
@@ -952,10 +952,10 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .pg-editable { padding: 0 !important; }
 .pg-editable.pg-dirty { background: rgba(245,158,11,.06) !important; }
 .pg-input {
-  width: 100%; height: 100%; min-height: 32px;
+  width: 100%; height: 100%; min-height: 26px;
   border: none; background: transparent;
-  text-align: right; font-size: .78rem; font-family: inherit;
-  color: #1e2433; padding: .4rem .7rem;
+  text-align: right; font-size: .72rem; font-family: inherit;
+  color: #1e2433; padding: .25rem .35rem;
   font-variant-numeric: tabular-nums;
   transition: background .1s;
 }
