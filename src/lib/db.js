@@ -494,3 +494,11 @@ export async function generatePersonnelEntries(lineItemId, dryRun = false) {
   if (!res.ok) throw new Error(json.error);
   return json;
 }
+
+// Version-level personnel generation: writes wages + social (AG-NK) split.
+export async function generatePersonnelSplit(versionId) {
+  const res = await apiFetch(`/api/plan/versions/${versionId}/generate-personnel`, { method: 'POST' });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error);
+  return json;
+}

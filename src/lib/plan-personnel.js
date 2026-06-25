@@ -148,6 +148,86 @@ export function spreadPersonnel(driver, planYear) {
 }
 
 /**
+ * Split ONE personnel driver into two monthly streams:
+ *   - wages:  gross salary (prorated) + bonus       → "Löhne & Gehälter"
+ *   - social: employer burden (AG-NK) on the gross  → "Sozialaufwendungen"
+ *
+ * The bonus is treated as wages (no burden applied), matching German P&L
+ * conventions where AG social contributions sit in their own line.
+ *
+ * @param {object} driver
+ * @param {number} planYear
+ * @returns {{ wages: {month,year,amount}[], social: {month,year,amount}[] }}
+ */
+export function splitPersonnel(driver, planYear) {
+  const {
+    annual_gross_salary,
+    payroll_burden_rate  = 0,
+    annual_bonus         = 0,
+    bonus_month          = 12,
+    salary_increase_date = null,
+    annual_gross_salary_post_increase = null,
+  } = driver;
+
+  const start        = driver.start_date ? new Date(driver.start_date) : null;
+  const end          = driver.end_date   ? new Date(driver.end_date)   : null;
+  const increaseDate = salary_increase_date ? new Date(salary_increase_date) : null;
+  const salaryPost   = annual_gross_salary_post_increase
+    ? Number(annual_gross_salary_post_increase) : null;
+  const burden = Number(payroll_burden_rate);
+
+  const wages = [];
+  const social = [];
+
+  for (let m = 1; m <= 12; m++) {
+    const gross = monthlyGross(
+      planYear, m, start, end,
+      Number(annual_gross_salary), increaseDate, salaryPost
+    );
+    if (gross <= 0) continue;
+    wages.push({ month: m, year: planYear, amount: gross });
+    if (burden > 0) social.push({ month: m, year: planYear, amount: round2(gross * burden) });
+  }
+
+  // Bonus → wages stream, lump sum in bonus_month (no burden)
+  if (Number(annual_bonus) > 0) {
+    const bonusFrac = monthFraction(planYear, bonus_month, start, end);
+    if (bonusFrac > 0) {
+      const existing = wages.find(e => e.month === bonus_month);
+      if (existing) {
+        existing.amount = round2(existing.amount + Number(annual_bonus));
+      } else {
+        wages.push({ month: bonus_month, year: planYear, amount: Number(annual_bonus) });
+        wages.sort((a, b) => a.month - b.month);
+      }
+    }
+  }
+
+  return { wages, social };
+}
+
+/**
+ * Split multiple personnel drivers and sum each stream by month.
+ *
+ * @param {object[]} drivers
+ * @param {number}   planYear
+ * @returns {{ wages: {month,year,amount}[], social: {month,year,amount}[] }}
+ */
+export function spreadPersonnelSplit(drivers, planYear) {
+  const wagesByMonth  = new Map();
+  const socialByMonth = new Map();
+  for (const d of drivers) {
+    const { wages, social } = splitPersonnel(d, planYear);
+    for (const e of wages)  wagesByMonth.set(e.month,  round2((wagesByMonth.get(e.month)  || 0) + e.amount));
+    for (const e of social) socialByMonth.set(e.month, round2((socialByMonth.get(e.month) || 0) + e.amount));
+  }
+  const toArr = map => [...map.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([month, amount]) => ({ month, year: planYear, amount }));
+  return { wages: toArr(wagesByMonth), social: toArr(socialByMonth) };
+}
+
+/**
  * Spread multiple personnel drivers and sum by month.
  * Suitable for generating a version-level personnel total across all employees.
  *

@@ -27,7 +27,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, renderDetailHeader,
   planConfirmDeleteVersion, planDeleteVersionConfirmed,
-  planToggleOpexMonths, planSaveLineName,
+  planToggleOpexMonths, planSaveLineName, planOpexCategoryChange,
   openCompareScreen, runComparison,
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,
   submitDriver, driverGenerate, driverDelete, driverEdit } from './ui/plan.js';
@@ -75,7 +75,7 @@ Object.assign(window, {
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
   planLockVersion, renderDetailHeader,
   planConfirmDeleteVersion, planDeleteVersionConfirmed,
-  planToggleOpexMonths, planSaveLineName,
+  planToggleOpexMonths, planSaveLineName, planOpexCategoryChange,
   openCompareScreen, runComparison,
   // Revenue drivers
   openDriverModal, closeDriverModal, driverTypeChanged, driverPreviewUpdate,

@@ -189,7 +189,7 @@ export function renderDetailHeader() {
         </div>
       </div>
       <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
-        ${!locked ? `<button class="btn-plan-save" id="plan-save-btn" onclick="planSaveEdits()" disabled>Speichern</button>` : ''}
+        ${!locked ? `<span class="plan-save-status" id="plan-save-status"></span>` : ''}
         ${!locked
           ? `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔒 Sperren</button>`
           : `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔓 Entsperren</button>`
@@ -220,7 +220,7 @@ export function renderGrid() {
     });
     _ensurePersonnelLineItems().then(() => {
       const personnelItems = _lineItems.filter(li => li.category === 'personnel');
-      renderPersonnelView(el, personnelItems, _currentVersion.year, !!_currentVersion.locked_at);
+      renderPersonnelView(el, personnelItems, _currentVersion.year, !!_currentVersion.locked_at, _currentVersion.id);
     });
     return;
   }
@@ -235,7 +235,7 @@ export function renderGrid() {
   }
 
   if (_categoryFilter === 'opex') {
-    el.innerHTML = renderOpexGrouped(items, entryMap, locked);
+    el.innerHTML = renderOpexTable(items, entryMap, locked);
     return;
   }
 
@@ -289,161 +289,149 @@ async function _ensurePersonnelLineItems() {
   }
 }
 
-// ── OpEx card view ─────────────────────────────────────────────────────
+// ── OpEx monthly table (per-row category dropdown) ──────────────────────
 
-let _opexExpanded = new Set();
+function opexCategoryOptions(selectedId) {
+  const opexDef = APP.plDef?.find(s => s.id === 'opex');
+  const groups  = opexDef?.subs ?? [];
+  const known   = groups.some(g => g.id === selectedId);
+  const opts = groups.map(g =>
+    `<option value="${esc(g.id)}" ${g.id === selectedId ? 'selected' : ''}>${esc(g.label)}</option>`
+  ).join('');
+  const sonstiges = `<option value="opex" ${(!known || selectedId === 'opex') ? 'selected' : ''}>Sonstiges</option>`;
+  return opts + sonstiges;
+}
 
-const OPEX_ACCENT_COLORS = ['#4f6ef7','#d97706','#16a34a','#9333ea','#0ea5e9','#f43f5e','#14b8a6','#f97316'];
+function opexGroupLabel(itemId) {
+  const opexDef = APP.plDef?.find(s => s.id === 'opex');
+  const g = (opexDef?.subs ?? []).find(x => x.id === itemId);
+  return g ? g.label : 'Sonstiges';
+}
 
-function renderOpexGrouped(items, entryMap, locked) {
-  const opexDef  = APP.plDef?.find(s => s.id === 'opex');
-  const plGroups = opexDef?.subs ?? [];
+function renderOpexTable(items, entryMap, locked) {
+  const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem('opex')">+ Position</button>` : '';
 
-  const byItemId = new Map();
-  for (const li of items) {
-    const key = li.item_id || '__ungrouped__';
-    if (!byItemId.has(key)) byItemId.set(key, []);
-    byItemId.get(key).push(li);
+  if (!items.length) {
+    return `<div class="plan-empty plan-empty-row">
+      ${addBtn}
+      <span>Noch keine OpEx-Positionen.</span>
+    </div>`;
   }
 
-  const plIds = new Set(plGroups.map(g => g.id));
-
-  // Extra groups: item_ids not matching any plGroup and not the bare fallback strings
-  const extraIds = [...byItemId.keys()].filter(k =>
-    !plIds.has(k) && k !== 'opex' && k !== '__ungrouped__'
-  );
-
-  // Consolidate all ungrouped items (item_id === 'opex' or missing)
-  const ungroupedItems = [
-    ...(byItemId.get('opex') ?? []),
-    ...(byItemId.get('__ungrouped__') ?? []),
-  ];
-  if (ungroupedItems.length) byItemId.set('__ungrouped__', ungroupedItems);
-
-  const allGroups = [
-    ...plGroups,
-    ...extraIds.map(id => ({ id, label: id })),
-    ...(ungroupedItems.length ? [{ id: '__ungrouped__', label: 'Sonstiges' }] : []),
-  ];
-
-  let grandTotal = 0;
-
-  const groupCards = allGroups.map((groupDef, groupIdx) => {
-    const groupId    = groupDef.id;
-    const groupLabel = groupDef.label;
-    const groupItems = byItemId.get(groupId) ?? [];
-    const accent     = OPEX_ACCENT_COLORS[groupIdx % OPEX_ACCENT_COLORS.length];
-
-    let groupTotal = 0;
-    for (const li of groupItems) {
-      const ma = entryMap.get(li.id) || {};
-      for (let m = 1; m <= 12; m++) {
-        const pending = _pendingEdits[`${li.id}_${m}`];
-        groupTotal += pending !== undefined ? pending : (ma[m] ?? 0);
-      }
-    }
-    grandTotal += groupTotal;
-
-    const rows = groupItems.map(li => {
-      const ma       = entryMap.get(li.id) || {};
-      const annualVal = Array.from({ length: 12 }, (_, i) => {
-        const pending = _pendingEdits[`${li.id}_${i + 1}`];
-        return pending !== undefined ? pending : (ma[i + 1] ?? 0);
-      }).reduce((s, v) => s + v, 0);
-
-      const isExpanded = _opexExpanded.has(li.id);
-
-      const monthInputs = isExpanded ? `
-        <div class="opex-months-grid">
-          ${Array.from({ length: 12 }, (_, i) => {
-            const m   = i + 1;
-            const pending = _pendingEdits[`${li.id}_${m}`];
-            const val = pending !== undefined ? pending : (ma[m] ?? 0);
-            const isDirty = pending !== undefined;
-            return `<div class="opex-month-cell">
-              <label class="opex-month-label">${MONTH_SHORT[i]}</label>
-              <input type="text" class="opex-month-input ${isDirty ? 'pg-dirty' : ''}"
-                     value="${val !== 0 ? formatInputVal(val) : ''}"
-                     placeholder="0"
-                     data-li="${li.id}" data-month="${m}"
-                     onblur="planCellBlur(this)"
-                     onkeydown="planCellKeydown(event,this)"
-                     onfocus="this.select()"/>
-            </div>`;
-          }).join('')}
-        </div>` : '';
-
-      const nameEl = locked
-        ? `<span class="opex-row-name">${esc(li.label)}</span>`
-        : `<span class="opex-row-name editable"
-                contenteditable="true"
-                data-li-id="${li.id}"
-                onblur="planSaveLineName(${li.id},this)"
-                onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
-              >${esc(li.label)}</span>`;
-
-      const editActions = !locked ? `
-        <div class="opex-row-actions">
-          <button class="btn-icon btn-icon-expand ${isExpanded ? 'active' : ''}"
-                  onclick="planToggleOpexMonths(${li.id})"
-                  title="${isExpanded ? 'Monate einklappen' : 'Monate bearbeiten'}">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          </button>
-          <button class="btn-icon btn-icon-del"
-                  onclick="planDeleteLineItem(${li.id})"
-                  title="Löschen">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-          </button>
-        </div>` : '';
-
-      return `
-        <div class="opex-row ${isExpanded ? 'opex-row-expanded' : ''}" id="opex-row-${li.id}">
-          <div class="opex-row-main">
-            ${editActions}
-            ${nameEl}
-            <span class="opex-row-total ${annualVal === 0 ? 'zero' : ''}">${annualVal !== 0 ? fmtCell(annualVal) : '—'}</span>
-          </div>
-          ${monthInputs}
-        </div>`;
-    }).join('');
-
-    const addBtn = !locked
-      ? `<button class="opex-add-row-btn" data-group="${esc(groupId)}" onclick="planAddLineItem('${esc(groupId)}')">+ Position</button>`
-      : '';
-
-    return `
-      <div class="opex-group-card" style="--group-accent:${accent}">
-        <div class="opex-group-header">
-          <div class="opex-group-title">
-            <span class="opex-group-dot"></span>
-            <span class="opex-group-name">${esc(groupLabel)}</span>
-            <span class="opex-group-count">${groupItems.length}</span>
-          </div>
-          <span class="opex-group-total ${groupTotal === 0 ? 'zero' : ''}">${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</span>
-        </div>
-        <div class="opex-group-body">
-          ${!groupItems.length && locked ? '<div class="opex-empty">Keine Positionen</div>' : rows}
-          ${addBtn}
-        </div>
-      </div>`;
-  });
-
   return `
-    <div class="opex-view">
-      <div class="opex-toolbar">
-        <div class="opex-grand-total-bar">
-          <span class="opex-grand-label">Gesamt OpEx</span>
-          <strong class="opex-grand-value">${grandTotal !== 0 ? fmtCell(grandTotal) : '—'}</strong>
-        </div>
-      </div>
-      <div class="opex-groups">${groupCards.join('')}</div>
+    <div class="plan-grid-wrap">
+      ${addBtn ? `<div class="plan-grid-actions plan-grid-actions-left">${addBtn}</div>` : ''}
+      <table class="plan-grid plan-grid-opex">
+        <thead>
+          <tr>
+            <th class="pg-pos">Position</th>
+            <th class="pg-cat">Kategorie</th>
+            ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
+            <th class="pg-total">Gesamt</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(li => opexGridRow(li, entryMap.get(li.id) || {}, locked)).join('')}
+        </tbody>
+        <tfoot>
+          ${opexTotalRow(items, entryMap)}
+        </tfoot>
+      </table>
     </div>`;
 }
 
-export function planToggleOpexMonths(liId) {
-  if (_opexExpanded.has(liId)) _opexExpanded.delete(liId);
-  else _opexExpanded.add(liId);
-  renderGrid();
+function opexGridRow(li, monthAmounts, locked) {
+  let rowTotal = 0;
+  const cells = [];
+  for (let m = 1; m <= MONTHS; m++) {
+    const pending = _pendingEdits[`${li.id}_${m}`];
+    const val = pending !== undefined ? pending : (monthAmounts[m] ?? 0);
+    rowTotal += val;
+    const isDirty = pending !== undefined;
+    if (locked) {
+      cells.push(`<td class="pg-cell">${val !== 0 ? `<span class="pg-val">${fmtCell(val)}</span>` : '<span class="pg-zero">—</span>'}</td>`);
+    } else {
+      cells.push(`
+        <td class="pg-cell pg-editable ${isDirty ? 'pg-dirty' : ''}">
+          <input type="text" class="pg-input"
+                 value="${val !== 0 ? formatInputVal(val) : ''}" placeholder="—"
+                 data-li="${li.id}" data-month="${m}"
+                 onblur="planCellBlur(this)" onkeydown="planCellKeydown(event,this)" onfocus="this.select()"/>
+        </td>`);
+    }
+  }
+
+  const nameEl = locked
+    ? `<span class="pg-li-label">${esc(li.label)}</span>`
+    : `<span class="pg-li-label editable" contenteditable="true" data-li-id="${li.id}"
+             onblur="planSaveLineName(${li.id},this)"
+             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}">${esc(li.label)}</span>`;
+
+  const delBtn = !locked ? `
+    <span class="pg-row-actions">
+      <button class="btn-icon btn-icon-del" onclick="planDeleteLineItem(${li.id})" title="Löschen">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </span>` : '';
+
+  const catCell = locked
+    ? `<td class="pg-cat-cell"><span class="pg-cat-static">${esc(opexGroupLabel(li.item_id))}</span></td>`
+    : `<td class="pg-cat-cell">
+         <select class="pg-cat-select" onchange="planOpexCategoryChange(${li.id}, this)">
+           ${opexCategoryOptions(li.item_id)}
+         </select>
+       </td>`;
+
+  return `
+    <tr class="pg-row" id="pgrow-${li.id}">
+      <td class="pg-pos-cell">
+        ${delBtn}
+        ${nameEl}
+      </td>
+      ${catCell}
+      ${cells.join('')}
+      <td class="pg-total-cell">${fmtCell(rowTotal)}</td>
+    </tr>`;
+}
+
+function opexTotalRow(items, entryMap) {
+  const colTotals = new Array(MONTHS).fill(0);
+  let grand = 0;
+  for (const li of items) {
+    const ma = entryMap.get(li.id) || {};
+    for (let m = 1; m <= MONTHS; m++) {
+      const pending = _pendingEdits[`${li.id}_${m}`];
+      const val = pending !== undefined ? pending : (ma[m] ?? 0);
+      colTotals[m - 1] += val;
+      grand += val;
+    }
+  }
+  return `
+    <tr class="pg-total-row">
+      <td class="pg-pos-cell" style="font-weight:700">Summe OpEx</td>
+      <td class="pg-cat-cell"></td>
+      ${colTotals.map(v => `<td class="pg-cell"><span class="pg-total-val">${fmtCell(v)}</span></td>`).join('')}
+      <td class="pg-total-cell pg-grand">${fmtCell(grand)}</td>
+    </tr>`;
+}
+
+// Deprecated: OpEx now shows all months inline. Kept for the window binding.
+export function planToggleOpexMonths() { /* no-op */ }
+
+export async function planOpexCategoryChange(liId, sel) {
+  const li = _lineItems.find(l => l.id === liId);
+  if (!li) return;
+  const newItemId = sel.value;
+  if (newItemId === li.item_id) return;
+  try {
+    await updatePlanLineItem(_currentVersion.id, liId, { item_id: newItemId });
+    li.item_id = newItemId;
+    for (const e of _entries) if (e.line_item_id === liId) e.item_id = newItemId;
+    showToast('Kategorie geändert');
+  } catch (e) {
+    sel.value = li.item_id;
+    showToast('Fehler: ' + e.message);
+  }
 }
 
 export async function planSaveLineName(liId, el) {
@@ -604,7 +592,7 @@ function commitCell(input) {
   updateRowTotal(liId);
   updateColTotal(month);
   updateGrandTotal();
-  updateSaveButton();
+  scheduleAutoSave();
 }
 
 function updateRowTotal(liId) {
@@ -616,50 +604,9 @@ function updateRowTotal(liId) {
   }
   const cell = document.querySelector(`#pgrow-${liId} .pg-total-cell`);
   if (cell) cell.textContent = fmtCell(rowTotal);
-  const cardTotal = document.querySelector(`#opex-row-${liId} .opex-row-total`);
-  if (cardTotal) {
-    cardTotal.textContent = rowTotal !== 0 ? fmtCell(rowTotal) : '—';
-    cardTotal.classList.toggle('zero', rowTotal === 0);
-  }
-  if (_categoryFilter === 'opex') updateOpexGroupTotals();
-}
-
-function updateOpexGroupTotals() {
-  const entryMap = buildEntryMap();
-  const opexItems = _lineItems.filter(li => li.category === 'opex');
-  let grand = 0;
-  const byItemId = new Map();
-  for (const li of opexItems) {
-    const key = li.item_id || '__ungrouped__';
-    if (!byItemId.has(key)) byItemId.set(key, []);
-    byItemId.get(key).push(li);
-  }
-  for (const [itemId, lis] of byItemId) {
-    let groupTotal = 0;
-    for (const li of lis) {
-      for (let m = 1; m <= MONTHS; m++) {
-        const pending = _pendingEdits[`${li.id}_${m}`];
-        groupTotal += pending !== undefined ? pending : ((entryMap.get(li.id) || {})[m] ?? 0);
-      }
-    }
-    grand += groupTotal;
-    document.querySelectorAll(`.opex-group-card`).forEach(card => {
-      const addBtn = card.querySelector(`.opex-add-row-btn`);
-      if (addBtn && addBtn.dataset.group === itemId) {
-        const tot = card.querySelector('.opex-group-total');
-        if (tot) {
-          tot.textContent = groupTotal !== 0 ? fmtCell(groupTotal) : '—';
-          tot.classList.toggle('zero', groupTotal === 0);
-        }
-      }
-    });
-  }
-  const grandEl = document.querySelector('.opex-grand-value');
-  if (grandEl) grandEl.textContent = grand !== 0 ? fmtCell(grand) : '—';
 }
 
 function updateColTotal(month) {
-  if (_categoryFilter === 'opex') return;
   const entryMap = buildEntryMap();
   const items = _lineItems.filter(li => li.category === _categoryFilter);
   let colTotal = 0;
@@ -673,7 +620,6 @@ function updateColTotal(month) {
 }
 
 function updateGrandTotal() {
-  if (_categoryFilter === 'opex') return;
   const entryMap = buildEntryMap();
   const items = _lineItems.filter(li => li.category === _categoryFilter);
   let grand = 0;
@@ -687,10 +633,34 @@ function updateGrandTotal() {
   if (el) el.textContent = fmtCell(grand);
 }
 
+// ── Auto-save ─────────────────────────────────────────────────────────
+
+let _saveTimer = null;
+const AUTOSAVE_DELAY = 700;  // ms after last edit
+
+function setSaveStatus(state) {
+  const el = document.getElementById('plan-save-status');
+  if (!el) return;
+  const map = {
+    idle:   '',
+    dirty:  '<span class="pss pss-dirty">● Nicht gespeichert</span>',
+    saving: '<span class="pss pss-saving">Speichert…</span>',
+    saved:  '<span class="pss pss-saved">✓ Gespeichert</span>',
+    error:  '<span class="pss pss-error">⚠ Fehler beim Speichern</span>',
+  };
+  el.innerHTML = map[state] ?? '';
+}
+
+// Kept name for existing call sites; now reflects dirty state in the indicator.
 function updateSaveButton() {
-  const btn = document.getElementById('plan-save-btn');
-  if (!btn) return;
-  btn.disabled = Object.keys(_pendingEdits).length === 0;
+  setSaveStatus(Object.keys(_pendingEdits).length ? 'dirty' : 'idle');
+}
+
+function scheduleAutoSave() {
+  if (_saveTimer) clearTimeout(_saveTimer);
+  if (!Object.keys(_pendingEdits).length) { setSaveStatus('idle'); return; }
+  setSaveStatus('dirty');
+  _saveTimer = setTimeout(() => { _saveTimer = null; planSaveEdits(); }, AUTOSAVE_DELAY);
 }
 
 // ── Save edits ────────────────────────────────────────────────────────
@@ -698,8 +668,7 @@ function updateSaveButton() {
 export async function planSaveEdits() {
   if (_saving || !Object.keys(_pendingEdits).length) return;
   _saving = true;
-  const btn = document.getElementById('plan-save-btn');
-  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  setSaveStatus('saving');
 
   try {
     const byLineItem = {};
@@ -727,15 +696,15 @@ export async function planSaveEdits() {
     }
 
     _pendingEdits = {};
-    updateSaveButton();
     document.querySelectorAll('.pg-dirty').forEach(el => el.classList.remove('pg-dirty'));
-    showToast('Gespeichert');
+    setSaveStatus('saved');
   } catch (e) {
+    setSaveStatus('error');
     showToast('Fehler beim Speichern: ' + e.message);
   } finally {
     _saving = false;
-    if (btn) { btn.disabled = false; btn.textContent = 'Speichern'; }
-    updateSaveButton();
+    // If new edits arrived during the save, persist them too.
+    if (Object.keys(_pendingEdits).length) scheduleAutoSave();
   }
 }
 
@@ -857,10 +826,6 @@ export async function submitAddLineItem() {
     }
 
     closeLineItemModal();
-
-    // OpEx: auto-expand so user can enter monthly amounts immediately
-    if (category === 'opex') _opexExpanded.add(li.id);
-
     renderGrid();
     showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt');
   } catch (e) {
@@ -1277,6 +1242,13 @@ export async function submitDriver() {
     _driverList = await getRevenueDrivers(_driverLineItemId);
     _resetDriverForm();
     _renderDriverList();
+
+    // Auto-generate monthly entries from the updated drivers
+    const liId = _driverLineItemId;
+    await generateFromDrivers(liId);
+    _entries = await getPlanEntries(_currentVersion.id);
+    renderGrid();
+    showToast('Umsatz aktualisiert');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -1302,10 +1274,15 @@ export async function driverGenerate() {
 
 export async function driverDelete(driverId) {
   try {
-    await deleteRevenueDriver(_driverLineItemId, driverId);
+    const liId = _driverLineItemId;
+    await deleteRevenueDriver(liId, driverId);
     _driverList = _driverList.filter(d => d.id !== driverId);
     _renderDriverList();
-    showToast('Driver gelöscht');
+    // Re-generate so removed driver's contribution disappears
+    await generateFromDrivers(liId);
+    _entries = await getPlanEntries(_currentVersion.id);
+    renderGrid();
+    showToast('Treiber gelöscht');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -1359,22 +1336,14 @@ function _renderDriverList() {
     body.insertBefore(existing, body.firstChild);
   }
 
-  const hasDrivers = _driverList.length > 0;
-  const genBtn = hasDrivers
-    ? `<button id="pdm-gen-btn" class="btn-plan-primary" style="font-size:.75rem;padding:.3rem .75rem" onclick="driverGenerate()">
-         ▶ Einträge generieren
-       </button>`
-    : '';
-
   if (!_driverList.length) {
-    existing.innerHTML = `<div style="font-size:.78rem;color:#a0aabb;margin-bottom:.5rem">Noch keine Drivers definiert.</div>`;
+    existing.innerHTML = `<div style="font-size:.78rem;color:#a0aabb;margin-bottom:.5rem">Noch keine Treiber definiert. Einträge werden automatisch generiert.</div>`;
     return;
   }
 
   existing.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.4rem">
-      <div style="font-size:.72rem;font-weight:700;color:#6b7a99;text-transform:uppercase;letter-spacing:.04em">Bestehende Drivers</div>
-      ${genBtn}
+      <div style="font-size:.72rem;font-weight:700;color:#6b7a99;text-transform:uppercase;letter-spacing:.04em">Treiber (automatisch berechnet)</div>
     </div>
     <table style="width:100%;font-size:.76rem;border-collapse:collapse">
       <thead>

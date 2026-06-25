@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import rateLimit from 'express-rate-limit';
 import pino from 'pino';
 import { spreadDrivers } from './src/lib/plan-revenue.js';
-import { spreadPersonnelDrivers } from './src/lib/plan-personnel.js';
+import { spreadPersonnelDrivers, spreadPersonnelSplit } from './src/lib/plan-personnel.js';
 import { allocate } from './src/lib/plan-allocation.js';
 
 const log = pino({
@@ -1650,6 +1650,13 @@ app.post('/api/plan/line-items/:liId/generate', requireAuth, requireAdmin, async
       });
     }
 
+    // Clear previously generated (non-manual) entries so removed/edited
+    // drivers don't leave stale months behind.
+    await client.query(
+      'DELETE FROM plan_entries WHERE version_id=$1 AND line_item_id=$2 AND is_manual_override=FALSE',
+      [version_id, lineItemId]
+    );
+
     // Upsert generated entries (only non-override months)
     for (const e of generated) {
       await client.query(
@@ -1892,6 +1899,78 @@ app.post('/api/plan/line-items/:liId/generate-personnel', requireAuth, requireAd
       generated: generated.length,
       skipped_manual_months: [...manualMonths].sort(),
     });
+  } catch (e) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ error: e.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Version-level personnel generation with WAGES / SOCIAL split.
+// Gathers all personnel drivers across the version and writes two streams:
+//   - gross salary + bonus → 'personnel_wages' line item
+//   - employer burden (AG-NK) → 'personnel_social' line item
+// Non-manual entries on both targets are cleared first so deletions propagate.
+app.post('/api/plan/versions/:vid/generate-personnel', requireAuth, requireAdmin, async (req, res) => {
+  const versionId = parseInt(req.params.vid);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    const { rows: vRows } = await client.query(
+      'SELECT year, locked_at FROM plan_versions WHERE id=$1', [versionId]
+    );
+    if (!vRows.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Version not found' }); }
+    if (vRows[0].locked_at) { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Version is locked' }); }
+    const year = vRows[0].year;
+
+    const { rows: liRows } = await client.query(
+      `SELECT id, item_id FROM plan_line_items WHERE version_id=$1 AND category='personnel'`, [versionId]
+    );
+    const wagesLi  = liRows.find(l => l.item_id === 'personnel_wages');
+    const socialLi = liRows.find(l => l.item_id === 'personnel_social');
+    if (!wagesLi || !socialLi) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Personnel line items (wages/social) missing' });
+    }
+
+    const liIds = liRows.map(l => l.id);
+    const { rows: drivers } = await client.query(
+      'SELECT * FROM plan_personnel_drivers WHERE line_item_id = ANY($1)', [liIds]
+    );
+
+    const { wages, social } = spreadPersonnelSplit(drivers, year);
+
+    for (const [li, entries] of [[wagesLi, wages], [socialLi, social]]) {
+      const { rows: existing } = await client.query(
+        'SELECT month FROM plan_entries WHERE version_id=$1 AND line_item_id=$2 AND is_manual_override=TRUE',
+        [versionId, li.id]
+      );
+      const manualMonths = new Set(existing.map(e => e.month));
+      // Clear previously generated (non-manual) entries so removals reduce totals
+      await client.query(
+        'DELETE FROM plan_entries WHERE version_id=$1 AND line_item_id=$2 AND is_manual_override=FALSE',
+        [versionId, li.id]
+      );
+      for (const e of entries) {
+        if (manualMonths.has(e.month)) continue;
+        await client.query(
+          `INSERT INTO plan_entries
+             (version_id, line_item_id, item_id, month, year, amount, is_manual_override, updated_by, updated_at)
+           VALUES ($1,$2,$3,$4,$5,$6,FALSE,$7,NOW())
+           ON CONFLICT (version_id, line_item_id, month)
+           WHERE line_item_id IS NOT NULL
+           DO UPDATE SET amount=$6, is_manual_override=FALSE, updated_by=$7, updated_at=NOW()`,
+          [versionId, li.id, li.item_id, e.month, year, e.amount, req.user.id]
+        );
+      }
+    }
+
+    await client.query('COMMIT');
+    logAudit(req.user.id, 'plan.personnel.generate.split',
+      `version_id=${versionId} wages=${wages.length} social=${social.length}`, req);
+    res.json({ ok: true, wages: wages.length, social: social.length });
   } catch (e) {
     await client.query('ROLLBACK');
     res.status(500).json({ error: e.message });

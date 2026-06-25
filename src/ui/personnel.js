@@ -11,7 +11,7 @@
 import { esc, MONTH_SHORT } from '../lib/utils.js';
 import {
   getPersonnelDrivers, createPersonnelDriver, updatePersonnelDriver,
-  deletePersonnelDriver, generatePersonnelEntries,
+  deletePersonnelDriver, generatePersonnelSplit,
 } from '../lib/db.js';
 import { spreadPersonnel } from '../lib/plan-personnel.js';
 import { showToast } from './screen.js';
@@ -20,34 +20,48 @@ const FMT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFr
 
 let _refresh = null;
 let _personModal = { lineItemId: null, editId: null };
+let _versionId = null;   // current plan version id — needed for auto-generation
 
 export function setPersonnelRefresh(fn) { _refresh = fn; }
 
+// Auto-generate the wages/social split for the whole version, then refresh.
+async function _autoGenerate() {
+  if (!_versionId) return;
+  try {
+    await generatePersonnelSplit(_versionId);
+  } catch (e) {
+    showToast('Generierung fehlgeschlagen: ' + e.message);
+  }
+  if (_refresh) await _refresh();
+}
+
 // ── Main render ───────────────────────────────────────────────────────
 
-export async function renderPersonnelView(container, lineItems, year, locked) {
+export async function renderPersonnelView(container, lineItems, year, locked, versionId) {
   if (!lineItems.length) {
     container.innerHTML = `<div class="plan-empty">Noch keine Personalposten. Klicke "+ Position" und wähle "Personal".</div>`;
     return;
   }
 
-  // Load all drivers for all personnel line items in parallel
-  const allDrivers = [];
-  await Promise.all(lineItems.map(async li => {
-    try {
-      const drivers = await getPersonnelDrivers(li.id);
-      drivers.forEach(d => allDrivers.push({ ...d, _li: li }));
-    } catch { /* ignore per-item errors */ }
-  }));
+  _versionId = versionId ?? _versionId;
 
-  const showGroup = lineItems.length > 1;
-  const liIds = lineItems.map(l => l.id).join(',');
-  const defaultLiId = lineItems[0]?.id;
+  // Persons live on the "Löhne & Gehälter" (wages) line item; the social
+  // line item is purely derived (AG-NK), so we only read persons from wages.
+  const wagesLi = lineItems.find(l => l.item_id === 'personnel_wages') || lineItems[0];
+
+  const allDrivers = [];
+  try {
+    const drivers = await getPersonnelDrivers(wagesLi.id);
+    drivers.forEach(d => allDrivers.push({ ...d, _li: wagesLi }));
+  } catch { /* ignore */ }
+
+  const showGroup = false;
+  const defaultLiId = wagesLi.id;
 
   const totals = _computeTotals(allDrivers, year);
 
-  const thGroup  = showGroup ? '<th class="hc-th">Gruppe</th>' : '';
-  const tdGroupFn = d => showGroup ? `<td class="hc-td"><span class="pg-li-tag">${esc(d._li.label)}</span></td>` : '';
+  const thGroup  = '';
+  const tdGroupFn = () => '';
 
   const headerRow = `
     <tr>
@@ -134,7 +148,7 @@ export async function renderPersonnelView(container, lineItems, year, locked) {
       <div class="hc-toolbar">
         ${!locked ? `
           <button class="btn-plan-primary" style="font-size:.78rem;padding:.35rem .85rem" onclick="openPersonModal(${defaultLiId})">+ Person</button>
-          <button class="btn-sm" onclick="generateAllPersonnel('${liIds}')" style="margin-left:.5rem">▶ Einträge generieren</button>
+          <span class="hc-autohint">Gehalt + Bonus → Löhne &amp; Gehälter · AG-NK → Sozialaufwendungen · wird automatisch berechnet</span>
         ` : ''}
       </div>
       ${allDrivers.length === 0
@@ -189,11 +203,10 @@ export async function editPerson(lineItemId, personId) {
 }
 
 export async function deletePerson(lineItemId, personId) {
-  if (!confirm('Person löschen?')) return;
   try {
     await deletePersonnelDriver(lineItemId, personId);
     showToast('Person gelöscht');
-    if (_refresh) await _refresh();
+    await _autoGenerate();
   } catch (e) { showToast('Fehler: ' + e.message); }
 }
 
@@ -240,7 +253,7 @@ export async function submitPerson() {
     }
     closePersonModal();
     showToast(_personModal.editId ? 'Person aktualisiert' : 'Person hinzugefügt');
-    if (_refresh) await _refresh();
+    await _autoGenerate();
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -248,17 +261,9 @@ export async function submitPerson() {
   }
 }
 
-export async function generateAllPersonnel(liIdsStr) {
-  const liIds = String(liIdsStr).split(',').map(Number).filter(Boolean);
-  try {
-    let total = 0;
-    for (const liId of liIds) {
-      const result = await generatePersonnelEntries(liId);
-      total += result.generated ?? 0;
-    }
-    showToast(`${total} Einträge generiert`);
-    if (_refresh) await _refresh();
-  } catch (e) { showToast('Fehler: ' + e.message); }
+// Kept for the window binding in main.js; personnel now auto-generates.
+export async function generateAllPersonnel() {
+  await _autoGenerate();
 }
 
 function _resetPersonForm() {
