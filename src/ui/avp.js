@@ -37,7 +37,8 @@ export async function openAvpScreen() {
   _selYear      = currentYear();
   _selVersion   = null;
   _fromMonth    = 1;
-  _upToMonth    = latestActualMonth();
+  const latest  = latestActualMonth();
+  _upToMonth    = Math.max(1, Math.min(12, latest || 12));
   _expandedRows = new Set();
 
   await loadVersionList();
@@ -137,11 +138,12 @@ export function avpChangeVersion() {
 export function avpChangeMonthFrom() {
   const sel = document.getElementById('avp-month-from-sel');
   const v = parseInt(sel?.value) || 1;
-  _fromMonth = v;
+  _fromMonth = Math.max(1, Math.min(12, v));
   // Ensure fromMonth <= upToMonth
   if (_fromMonth > _upToMonth) {
     _upToMonth = _fromMonth;
-    document.getElementById('avp-month-to-sel').value = _upToMonth;
+    const toSel = document.getElementById('avp-month-to-sel');
+    if (toSel) toSel.value = _upToMonth;
   }
   renderAvpContent();
 }
@@ -149,11 +151,12 @@ export function avpChangeMonthFrom() {
 export function avpChangeMonthTo() {
   const sel = document.getElementById('avp-month-to-sel');
   const v = parseInt(sel?.value) || 12;
-  _upToMonth = v;
+  _upToMonth = Math.max(1, Math.min(12, v));
   // Ensure fromMonth <= upToMonth
   if (_upToMonth < _fromMonth) {
     _fromMonth = _upToMonth;
-    document.getElementById('avp-month-from-sel').value = _fromMonth;
+    const fromSel = document.getElementById('avp-month-from-sel');
+    if (fromSel) fromSel.value = _fromMonth;
   }
   renderAvpContent();
 }
@@ -250,19 +253,25 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
 }
 
 function renderTable(rows, periodPLs, fromMonth, upTo) {
+  // Sanitize inputs
+  const fm = Math.max(1, Math.min(12, fromMonth || 1));
+  const ut = Math.max(1, Math.min(12, upTo || 12));
+  const startMonth = Math.min(fm, ut);
+  const endMonth = Math.max(fm, ut);
+
   const version   = _versions.find(v => v.id === _selVersion);
   const versionName = esc(version ? `${version.name} (${TYPE_LABEL[version.type] ?? version.type})` : 'Plan');
   const yearLabel   = _selYear ?? '';
-  const fromLabel   = MONTH_SHORT[fromMonth - 1];
-  const toLabel     = MONTH_SHORT[upTo - 1];
-  const rangeLabel  = fromMonth === upTo ? fromLabel : `${fromLabel}–${toLabel}`;
-  const ytdActual   = extractActualsForRange(periodPLs, fromMonth, upTo);
+  const fromLabel   = MONTH_SHORT[startMonth - 1] || 'Jan';
+  const toLabel     = MONTH_SHORT[endMonth - 1] || 'Dez';
+  const rangeLabel  = startMonth === endMonth ? fromLabel : `${fromLabel}–${toLabel}`;
+  const ytdActual   = extractActualsForRange(periodPLs, startMonth, endMonth);
 
   // Build YTD plan totals
   const ytdPlan = {};
   for (const row of rows) {
     ytdPlan[row.key] = 0;
-    for (let m = fromMonth; m <= upTo; m++) {
+    for (let m = startMonth; m <= endMonth; m++) {
       ytdPlan[row.key] += row.monthly[m]?.b ?? 0;
     }
   }
@@ -294,7 +303,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
   }).join('');
 
   // Month header columns (only for range)
-  const visibleMonths = Array.from({ length: upTo - fromMonth + 1 }, (_, i) => fromMonth + i);
+  const visibleMonths = Array.from({ length: endMonth - startMonth + 1 }, (_, i) => startMonth + i);
 
   const monthHeaders = visibleMonths.map(m =>
     `<th colspan="3" class="avp-month-head">${MONTH_SHORT[m - 1]}</th>`
