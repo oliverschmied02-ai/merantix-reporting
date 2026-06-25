@@ -25,7 +25,8 @@ import { showToast } from './screen.js';
 let _versions     = [];
 let _selVersion   = null;
 let _selYear      = null;
-let _upToMonth    = null;
+let _fromMonth    = 1;     // 1-12, start of range
+let _upToMonth    = 12;    // 1-12, end of range (12 = full year)
 let _lineItems    = [];   // line items for selected plan version
 let _entries      = [];   // entries for selected plan version
 let _expandedRows = new Set();  // category keys that are drilled down
@@ -35,6 +36,7 @@ let _expandedRows = new Set();  // category keys that are drilled down
 export async function openAvpScreen() {
   _selYear      = currentYear();
   _selVersion   = null;
+  _fromMonth    = 1;
   _upToMonth    = latestActualMonth();
   _expandedRows = new Set();
 
@@ -97,15 +99,21 @@ function populateVersionSelector() {
 }
 
 function populateMonthSelector() {
-  const sel = document.getElementById('avp-month-sel');
-  if (!sel) return;
+  const fromSel = document.getElementById('avp-month-from-sel');
+  const toSel = document.getElementById('avp-month-to-sel');
+  if (!fromSel || !toSel) return;
+
   const latest = latestActualMonth();
-  sel.innerHTML = `<option value="12">Gesamtjahr</option>` +
-    MONTH_SHORT.map((m, i) => {
-      const mo = i + 1;
-      return `<option value="${mo}" ${mo === latest ? 'selected' : ''}>${m}</option>`;
-    }).join('');
-  sel.value = _upToMonth ?? 12;
+  const monthOptions = MONTH_SHORT.map((m, i) => {
+    const mo = i + 1;
+    return `<option value="${mo}">${m}</option>`;
+  }).join('');
+
+  fromSel.innerHTML = monthOptions;
+  toSel.innerHTML = monthOptions;
+
+  fromSel.value = _fromMonth;
+  toSel.value = _upToMonth;
 }
 
 // ── onChange handlers (called from HTML) ─────────────────────────────
@@ -126,10 +134,27 @@ export function avpChangeVersion() {
   renderAvpContent();
 }
 
-export function avpChangeMonth() {
-  const sel = document.getElementById('avp-month-sel');
-  const v = parseInt(sel?.value);
-  _upToMonth = (!v || v >= 12) ? null : v;
+export function avpChangeMonthFrom() {
+  const sel = document.getElementById('avp-month-from-sel');
+  const v = parseInt(sel?.value) || 1;
+  _fromMonth = v;
+  // Ensure fromMonth <= upToMonth
+  if (_fromMonth > _upToMonth) {
+    _upToMonth = _fromMonth;
+    document.getElementById('avp-month-to-sel').value = _upToMonth;
+  }
+  renderAvpContent();
+}
+
+export function avpChangeMonthTo() {
+  const sel = document.getElementById('avp-month-to-sel');
+  const v = parseInt(sel?.value) || 12;
+  _upToMonth = v;
+  // Ensure fromMonth <= upToMonth
+  if (_upToMonth < _fromMonth) {
+    _fromMonth = _upToMonth;
+    document.getElementById('avp-month-from-sel').value = _fromMonth;
+  }
   renderAvpContent();
 }
 
@@ -180,9 +205,8 @@ async function renderAvpContent() {
 
     const planMonthly = aggregateByCategory(lineItems, entries);
     const rows        = compareVersions(actualMonthly, planMonthly);
-    const upTo        = _upToMonth ?? 12;
 
-    el.innerHTML = renderTable(rows, periodPLs, upTo);
+    el.innerHTML = renderTable(rows, periodPLs, _fromMonth, _upToMonth);
   } catch (e) {
     el.innerHTML = `<div class="plan-error">Fehler: ${esc(e.message)}</div>`;
     showToast('Fehler: ' + e.message);
@@ -190,8 +214,7 @@ async function renderAvpContent() {
 }
 
 function renderActualsOnly(el, actualMonthly, periodPLs) {
-  const upTo = _upToMonth ?? 12;
-  const ytd  = extractActualsYTD(periodPLs, upTo);
+  const ytd  = extractActualsForRange(periodPLs, _fromMonth, _upToMonth);
 
   const rows = COMPARE_ROWS.map(row => ({
     ...row,
@@ -199,6 +222,9 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
   }));
 
   const isEbitdaRow = r => r.computed;
+  const fromLabel = MONTH_SHORT[_fromMonth - 1];
+  const toLabel = MONTH_SHORT[_upToMonth - 1];
+  const rangeLabel = _fromMonth === _upToMonth ? fromLabel : `${fromLabel}–${toLabel}`;
 
   el.innerHTML = `
     <div class="avp-wrap">
@@ -209,7 +235,7 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
         <thead>
           <tr>
             <th class="avp-label-head">Position</th>
-            <th class="avp-num-head">Ist YTD (Jan–${MONTH_SHORT[(upTo < 12 ? upTo : 12) - 1]})</th>
+            <th class="avp-num-head">Ist (${rangeLabel})</th>
           </tr>
         </thead>
         <tbody>
@@ -223,18 +249,20 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
     </div>`;
 }
 
-function renderTable(rows, periodPLs, upTo) {
+function renderTable(rows, periodPLs, fromMonth, upTo) {
   const version   = _versions.find(v => v.id === _selVersion);
   const versionName = esc(version ? `${version.name} (${TYPE_LABEL[version.type] ?? version.type})` : 'Plan');
   const yearLabel   = _selYear ?? '';
-  const upToLabel   = upTo < 12 ? `Jan–${MONTH_SHORT[upTo - 1]}` : 'Gesamtjahr';
-  const ytdActual   = extractActualsYTD(periodPLs, upTo);
+  const fromLabel   = MONTH_SHORT[fromMonth - 1];
+  const toLabel     = MONTH_SHORT[upTo - 1];
+  const rangeLabel  = fromMonth === upTo ? fromLabel : `${fromLabel}–${toLabel}`;
+  const ytdActual   = extractActualsForRange(periodPLs, fromMonth, upTo);
 
   // Build YTD plan totals
   const ytdPlan = {};
   for (const row of rows) {
     ytdPlan[row.key] = 0;
-    for (let m = 1; m <= upTo; m++) {
+    for (let m = fromMonth; m <= upTo; m++) {
       ytdPlan[row.key] += row.monthly[m]?.b ?? 0;
     }
   }
@@ -265,12 +293,12 @@ function renderTable(rows, periodPLs, upTo) {
       </div>`;
   }).join('');
 
-  // Month header columns (only up to upTo)
-  const visibleMonths = Array.from({ length: upTo }, (_, i) => i + 1);
+  // Month header columns (only for range)
+  const visibleMonths = Array.from({ length: upTo - fromMonth + 1 }, (_, i) => fromMonth + i);
 
   const monthHeaders = visibleMonths.map(m =>
     `<th colspan="3" class="avp-month-head">${MONTH_SHORT[m - 1]}</th>`
-  ).join('') + `<th colspan="3" class="avp-annual-head">YTD ${upToLabel}</th>`;
+  ).join('') + `<th colspan="3" class="avp-annual-head">Gesamt ${rangeLabel}</th>`;
 
   const subHeaders = visibleMonths.map(() =>
     `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`
@@ -382,7 +410,7 @@ function renderTable(rows, periodPLs, upTo) {
         <span class="avp-meta-sep">·</span>
         <span class="avp-meta-plan">Plan: ${versionName}</span>
         <span class="avp-meta-sep">·</span>
-        <span class="avp-meta-period">Zeitraum: ${upToLabel}</span>
+        <span class="avp-meta-period">Zeitraum: ${rangeLabel}</span>
         <span class="avp-meta-note">Δ = Ist − Plan · grün = über Plan (Umsatz) / unter Plan (Kosten)</span>
       </div>
 
@@ -448,3 +476,27 @@ function computePeriodsForYear(year) {
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
+
+function extractActualsForRange(periodPLs, fromMonth, upToMonth) {
+  const ytd = {};
+  for (const row of COMPARE_ROWS) ytd[row.key] = 0;
+
+  const CATEGORY_TO_PL_KEY = {
+    revenue:      'revenue',
+    personnel:    'personnel',
+    opex:         'opex',
+    depreciation: 'depreciation',
+  };
+
+  for (let m = fromMonth; m <= upToMonth; m++) {
+    const i = m - 1;
+    const computed = periodPLs[i]?.computed ?? {};
+    for (const [cat, plKey] of Object.entries(CATEGORY_TO_PL_KEY)) {
+      ytd[cat] = round2((ytd[cat] || 0) + (computed[plKey] ?? 0));
+    }
+  }
+
+  // Re-derive EBITDA from components
+  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex']);
+  return ytd;
+}
