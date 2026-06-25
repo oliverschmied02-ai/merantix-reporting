@@ -334,8 +334,6 @@ function renderOpexTable(items, entryMap, locked) {
   const groups = [...plGroups];
   if (byGroup.has('opex')) groups.push({ id: 'opex', label: 'Sonstiges' });
 
-  const colspanFull = 2 + MONTHS + 1;
-
   const groupBlocks = groups.map(g => {
     const lis = byGroup.get(g.id) ?? [];
     const colSub = new Array(MONTHS).fill(0);
@@ -354,23 +352,21 @@ function renderOpexTable(items, entryMap, locked) {
 
     const rows = lis.map(li => opexGridRow(li, entryMap.get(li.id) || {}, locked)).join('');
 
-    const addRow = !locked ? `
-      <tr class="pg-add-row">
-        <td colspan="${colspanFull}">
-          <button class="btn-plan-add-sm" onclick="planAddLineItem('${esc(g.id)}')">+ Position in „${esc(g.label)}"</button>
-        </td>
-      </tr>` : '';
+    const addBtn = !locked
+      ? `<button class="pg-group-add" onclick="planAddLineItem('${esc(g.id)}')" title="Position hinzufügen">+</button>`
+      : '';
 
     return `
-      <tr class="pg-group-row" data-group="${esc(g.id)}">
+      <tr class="pg-group-row ${lis.length ? '' : 'pg-group-empty'}" data-group="${esc(g.id)}">
         <td class="pg-pos-cell pg-group-label" colspan="2">
-          ${esc(g.label)}<span class="pg-group-count">${lis.length}</span>
+          <span class="pg-group-name">${esc(g.label)}</span>
+          ${lis.length ? `<span class="pg-group-count">${lis.length}</span>` : ''}
+          ${addBtn}
         </td>
         ${headerCells}
         <td class="pg-total-cell pg-group-total" data-group-total>${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</td>
       </tr>
-      ${rows}
-      ${addRow}`;
+      ${rows}`;
   }).join('');
 
   return `
