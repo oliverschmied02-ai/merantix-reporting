@@ -909,13 +909,15 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
 .plan-grid-container {
   flex: 1; overflow: auto; padding: 0;
 }
-.plan-grid-wrap { padding: 1rem 1.5rem 2rem; min-width: max-content; }
+.plan-grid-wrap { padding: 1rem 1.5rem 2rem; }
 
-/* Planning grid table */
+/* Planning grid table — fixed layout so all 12 months always fit and the
+   table expands to fill wider screens. */
 .plan-grid {
   border-collapse: separate; border-spacing: 0;
-  width: auto; max-width: 100%; font-size: .72rem;
+  width: 100%; table-layout: fixed; font-size: .72rem;
 }
+.plan-grid th, .plan-grid td { overflow: hidden; text-overflow: ellipsis; }
 .plan-grid thead th {
   position: sticky; top: 0; background: #f4f6fb;
   padding: .4rem .35rem; font-size: .58rem; font-weight: 700;
@@ -923,10 +925,10 @@ tr.row-ratio-sep td.td-pos { background: transparent; }
   border-bottom: 2px solid #e4e9f5; white-space: nowrap;
   text-align: right; z-index: 5;
 }
-.plan-grid thead th.pg-pos { text-align: left; min-width: 150px; left: 0; z-index: 10; }
-.plan-grid thead th.pg-cat { text-align: left; min-width: 78px; white-space: nowrap; }
-.plan-grid thead th.pg-month { min-width: 50px; }
-.plan-grid thead th.pg-total { min-width: 66px; color: #4f6ef7; border-left: 2px solid #e4e9f5; }
+.plan-grid thead th.pg-pos { text-align: left; width: 170px; left: 0; z-index: 10; }
+.plan-grid thead th.pg-cat { text-align: left; width: 96px; white-space: nowrap; }
+.plan-grid thead th.pg-month { width: auto; }
+.plan-grid thead th.pg-total { width: 78px; color: #4f6ef7; border-left: 2px solid #e4e9f5; }
 .plan-grid thead th.pg-actions { width: 30px; }
 
 /* Grid rows */
