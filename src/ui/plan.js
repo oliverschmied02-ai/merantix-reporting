@@ -308,34 +308,84 @@ function opexGroupLabel(itemId) {
   return g ? g.label : 'Sonstiges';
 }
 
-function renderOpexTable(items, entryMap, locked) {
-  const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem('opex')">+ Position</button>` : '';
+// Map a line item's item_id to a known sBA category, falling back to 'opex' (Sonstiges).
+function normalizeOpexGroup(itemId) {
+  const opexDef = APP.plDef?.find(s => s.id === 'opex');
+  const plIds = new Set((opexDef?.subs ?? []).map(g => g.id));
+  return plIds.has(itemId) ? itemId : 'opex';
+}
 
-  if (!items.length) {
-    return `<div class="plan-empty plan-empty-row">
-      ${addBtn}
-      <span>Noch keine OpEx-Positionen.</span>
-    </div>`;
+function renderOpexTable(items, entryMap, locked) {
+  const opexDef     = APP.plDef?.find(s => s.id === 'opex');
+  const plGroups    = opexDef?.subs ?? [];
+  const sectionLbl  = opexDef?.label ?? 'Sonstige betr. Aufwendungen';
+  const plIds       = new Set(plGroups.map(g => g.id));
+
+  // Group line items by their sBA category
+  const byGroup = new Map();
+  for (const li of items) {
+    const key = plIds.has(li.item_id) ? li.item_id : 'opex';
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(li);
   }
+
+  // Show ALL canonical sBA categories (even empty ones) so they can be
+  // compared, plus a "Sonstiges" bucket only if it actually holds items.
+  const groups = [...plGroups];
+  if (byGroup.has('opex')) groups.push({ id: 'opex', label: 'Sonstiges' });
+
+  const colspanFull = 2 + MONTHS + 1;
+
+  const groupBlocks = groups.map(g => {
+    const lis = byGroup.get(g.id) ?? [];
+    const colSub = new Array(MONTHS).fill(0);
+    let groupTotal = 0;
+    for (const li of lis) {
+      const ma = entryMap.get(li.id) || {};
+      for (let m = 1; m <= MONTHS; m++) {
+        const pending = _pendingEdits[`${li.id}_${m}`];
+        const v = pending !== undefined ? pending : (ma[m] ?? 0);
+        colSub[m - 1] += v; groupTotal += v;
+      }
+    }
+    const headerCells = colSub.map((v, i) =>
+      `<td class="pg-gcell" data-gmonth="${i + 1}">${v !== 0 ? fmtCell(v) : '—'}</td>`
+    ).join('');
+
+    const rows = lis.map(li => opexGridRow(li, entryMap.get(li.id) || {}, locked)).join('');
+
+    const addRow = !locked ? `
+      <tr class="pg-add-row">
+        <td colspan="${colspanFull}">
+          <button class="btn-plan-add-sm" onclick="planAddLineItem('${esc(g.id)}')">+ Position in „${esc(g.label)}"</button>
+        </td>
+      </tr>` : '';
+
+    return `
+      <tr class="pg-group-row" data-group="${esc(g.id)}">
+        <td class="pg-pos-cell pg-group-label" colspan="2">
+          ${esc(g.label)}<span class="pg-group-count">${lis.length}</span>
+        </td>
+        ${headerCells}
+        <td class="pg-total-cell pg-group-total" data-group-total>${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</td>
+      </tr>
+      ${rows}
+      ${addRow}`;
+  }).join('');
 
   return `
     <div class="plan-grid-wrap">
-      ${addBtn ? `<div class="plan-grid-actions plan-grid-actions-left">${addBtn}</div>` : ''}
       <table class="plan-grid plan-grid-opex">
         <thead>
           <tr>
-            <th class="pg-pos">Position</th>
+            <th class="pg-pos">${esc(sectionLbl)}</th>
             <th class="pg-cat">Kategorie</th>
             ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
             <th class="pg-total">Gesamt</th>
           </tr>
         </thead>
-        <tbody>
-          ${items.map(li => opexGridRow(li, entryMap.get(li.id) || {}, locked)).join('')}
-        </tbody>
-        <tfoot>
-          ${opexTotalRow(items, entryMap)}
-        </tfoot>
+        <tbody>${groupBlocks}</tbody>
+        <tfoot>${opexTotalRow(items, entryMap)}</tfoot>
       </table>
     </div>`;
 }
@@ -427,11 +477,40 @@ export async function planOpexCategoryChange(liId, sel) {
     await updatePlanLineItem(_currentVersion.id, liId, { item_id: newItemId });
     li.item_id = newItemId;
     for (const e of _entries) if (e.line_item_id === liId) e.item_id = newItemId;
+    renderGrid();  // move the row into its new category group
     showToast('Kategorie geändert');
   } catch (e) {
     sel.value = li.item_id;
     showToast('Fehler: ' + e.message);
   }
+}
+
+// Recompute the per-category subtotal rows in the OpEx grouped table.
+function updateOpexGroupSubtotals() {
+  const entryMap = buildEntryMap();
+  const opexItems = _lineItems.filter(li => li.category === 'opex');
+  const byGroup = new Map();
+  for (const li of opexItems) {
+    const key = normalizeOpexGroup(li.item_id);
+    if (!byGroup.has(key)) byGroup.set(key, []);
+    byGroup.get(key).push(li);
+  }
+  document.querySelectorAll('.pg-group-row').forEach(row => {
+    const lis = byGroup.get(row.dataset.group) ?? [];
+    let groupTotal = 0;
+    for (let m = 1; m <= MONTHS; m++) {
+      let colt = 0;
+      for (const li of lis) {
+        const pending = _pendingEdits[`${li.id}_${m}`];
+        colt += pending !== undefined ? pending : ((entryMap.get(li.id) || {})[m] ?? 0);
+      }
+      groupTotal += colt;
+      const cell = row.querySelector(`[data-gmonth="${m}"]`);
+      if (cell) cell.textContent = colt !== 0 ? fmtCell(colt) : '—';
+    }
+    const tot = row.querySelector('[data-group-total]');
+    if (tot) tot.textContent = groupTotal !== 0 ? fmtCell(groupTotal) : '—';
+  });
 }
 
 export async function planSaveLineName(liId, el) {
@@ -592,6 +671,7 @@ function commitCell(input) {
   updateRowTotal(liId);
   updateColTotal(month);
   updateGrandTotal();
+  if (_categoryFilter === 'opex') updateOpexGroupSubtotals();
   scheduleAutoSave();
 }
 
