@@ -5,6 +5,17 @@ export function parseDE(s) {
   catch { return 0; }
 }
 
+// Currency helpers. Monetary amounts are exact to the cent, but binary floats
+// are not — summing thousands of euro values drifts by a cent or more, so a P&L
+// total no longer ties to the books. Accumulate in integer minor units (cents)
+// and only convert back to euros at the edge.
+export function toCents(n) {
+  return Math.round((Number(n) || 0) * 100);
+}
+export function round2(n) {
+  return Math.round((Number(n) || 0) * 100) / 100;
+}
+
 export function parseDateDE(s) {
   s = String(s || '').trim();
   const m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);

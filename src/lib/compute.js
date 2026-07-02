@@ -1,5 +1,5 @@
 import { APP } from '../state.js';
-import { MONTH_SHORT } from './utils.js';
+import { MONTH_SHORT, toCents, round2 } from './utils.js';
 import { resolveMapping } from './resolve.js';
 
 export function isInGUV(n) {
@@ -19,15 +19,18 @@ export function computePLSingle(txns) {
     const key = mapping.itemId + '::' + mapping.subId;
     if (!subBal.has(key)) subBal.set(key, { soll: 0, haben: 0, byAccount: {}, nb: mapping.normalBalance });
     const b = subBal.get(key);
-    b.soll  += t.soll;
-    b.haben += t.haben;
+    // Accumulate in integer cents so totals stay exact across many transactions.
+    const sollC = toCents(t.soll), habenC = toCents(t.haben);
+    b.soll  += sollC;
+    b.haben += habenC;
     const acct = t.ktonr;
     if (!b.byAccount[acct]) b.byAccount[acct] = { soll: 0, haben: 0, txns: [] };
-    b.byAccount[acct].soll  += t.soll;
-    b.byAccount[acct].haben += t.haben;
+    b.byAccount[acct].soll  += sollC;
+    b.byAccount[acct].haben += habenC;
     b.byAccount[acct].txns.push(t);
   }
 
+  // Operates on integer cents; returns net cents (still an integer).
   function netAmt(soll, haben, nb) {
     return nb === 'H' ? haben - soll : soll - haben;
   }
@@ -36,22 +39,22 @@ export function computePLSingle(txns) {
   for (const item of APP.plDef) {
     if (item.type === 'computed' || item.type === 'ratio') continue;
     const bySubId = {};
-    let itemAmt = 0;
+    let itemAmtC = 0; // cents
     for (const sub of item.subs) {
       const nb  = sub.normalBalance || item.normalBalance || 'S';
       const key = item.id + '::' + sub.id;
       const b   = subBal.get(key);
-      const subAmt = b ? netAmt(b.soll, b.haben, nb) : 0;
+      const subAmtC = b ? netAmt(b.soll, b.haben, nb) : 0; // cents
       const byAccount = {};
       if (b) {
         for (const [acctStr, ab] of Object.entries(b.byAccount)) {
-          byAccount[+acctStr] = { amount: netAmt(ab.soll, ab.haben, nb), txns: ab.txns };
+          byAccount[+acctStr] = { amount: netAmt(ab.soll, ab.haben, nb) / 100, txns: ab.txns };
         }
       }
-      bySubId[sub.id] = { amount: subAmt, byAccount };
-      itemAmt += subAmt;
+      bySubId[sub.id] = { amount: subAmtC / 100, byAccount };
+      itemAmtC += subAmtC;
     }
-    vals[item.id] = { amount: itemAmt, bySubId };
+    vals[item.id] = { amount: itemAmtC / 100, bySubId };
   }
 
   const computed = {};
@@ -68,9 +71,9 @@ export function computePLSingle(txns) {
     if (item.type === 'computed') {
       let v = 0;
       for (const [dep, sign] of item.formula) v += getVal(dep) * sign;
-      computed[id] = v;
+      computed[id] = round2(v);
       visiting.delete(id);
-      return v;
+      return computed[id];
     }
     if (item.type === 'ratio') {
       const num = getVal(item.numerator);
@@ -85,9 +88,9 @@ export function computePLSingle(txns) {
         const sa = vals[id]?.bySubId[sub.id]?.amount || 0;
         v += sub.normalBalance === 'H' ? sa : -sa;
       }
-      computed[id] = v;
+      computed[id] = round2(v);
       visiting.delete(id);
-      return v;
+      return computed[id];
     }
     const raw = vals[id]?.amount || 0;
     computed[id] = raw;
