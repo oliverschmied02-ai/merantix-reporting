@@ -153,7 +153,7 @@ export async function planOpenVersion(id) {
   try {
     const [versionData, lineItems, entries] = await Promise.all([
       getPlanVersions().then(vs => vs.find(v => v.id === id)),
-      getPlanLineItems(id, { activeOnly: false }),
+      getPlanLineItems(id), // activeOnly defaults true — soft-deleted items must stay hidden in the editing grid
       getPlanEntries(id),
     ]);
 
