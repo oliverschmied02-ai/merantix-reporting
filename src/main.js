@@ -603,6 +603,13 @@ async function initApp() {
   initOutsidePickerClose();
   window.addEventListener('resize', updateAboveTableHeight);
 
+  // Escape closes the top surface (drill panel first, then settings modal).
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('drill-panel')?.classList.contains('open')) { closeDrill(); return; }
+    if (document.getElementById('settings-modal')?.classList.contains('open')) toggleSettings(false);
+  });
+
   // Check if already logged in
   showLoginScreen(); // default: show login
   try {

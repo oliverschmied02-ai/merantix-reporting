@@ -24,6 +24,8 @@ export function toggleSettings(show) {
   modal.classList.toggle('open', show);
   if (show) {
     switchSettingsTab('users');
+    // Move focus into the dialog for keyboard users.
+    modal.querySelector('.sm-tab')?.focus?.();
   }
 }
 

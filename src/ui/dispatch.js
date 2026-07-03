@@ -56,12 +56,27 @@ function dispatch(attr, event) {
   fn(...args.map((/** @type {any} */ a) => resolveArg(a, el, event)));
 }
 
+// Non-native controls carrying data-act (e.g. a clickable <td>) aren't
+// keyboard-activatable by default. Treat Enter/Space as a click for any
+// focusable data-act element that isn't already a native button/link/field.
+const NATIVE_ACTIVATABLE = new Set(['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA']);
+/** @param {KeyboardEvent} event */
+function keyActivate(event) {
+  if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Spacebar') return;
+  const target = /** @type {Element|null} */ (event.target);
+  const el = target && target.closest('[data-act]');
+  if (!el || NATIVE_ACTIVATABLE.has(el.tagName)) return;
+  event.preventDefault();
+  dispatch('data-act', event);
+}
+
 export function initDispatch() {
   for (const [evName, attr] of Object.entries(EVENT_ATTR)) {
     // blur/focus don't bubble — listen in the capture phase.
     const capture = evName === 'blur' || evName === 'focus';
     document.addEventListener(evName, e => dispatch(attr, e), capture);
   }
+  document.addEventListener('keydown', keyActivate);
 }
 
 // ── Attribute builders for use inside template-literal render code ────────
