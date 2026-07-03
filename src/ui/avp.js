@@ -321,7 +321,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
 
   const subHeaders = visibleMonths.map(() =>
     `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`
-  ).join('') + `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`;
+  ).join('') + `<th class="avp-sub ist avp-ytd-sep">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`;
 
   const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
 
@@ -368,7 +368,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
           ${drillChevron}${esc(row.label)}
         </td>
         ${monthlyCells}
-        <td class="avp-cell ist avp-ytd">${fmtActual(ytdAct)}</td>
+        <td class="avp-cell ist avp-ytd avp-ytd-sep">${fmtActual(ytdAct)}</td>
         <td class="avp-cell plan avp-ytd">${fmtActual(ytdPl)}</td>
         <td class="avp-cell delta avp-ytd avp-delta-${ytdCls}">
           ${fmtDelta(ytdIvp)}
@@ -413,7 +413,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
             ${li.entity ? `<span class="avp-drill-tag">${esc(li.entity)}</span>` : ''}
           </td>
           ${planCells(a)}
-          <td class="avp-cell avp-drill-cell avp-ytd"></td>
+          <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep"></td>
           <td class="avp-cell avp-drill-cell plan avp-ytd">${ytd !== 0 ? fmtActual(ytd) : '<span class="avp-zero">—</span>'}</td>
           <td class="avp-cell avp-drill-cell avp-ytd"></td>
         </tr>`;
@@ -450,7 +450,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
           <tr class="avp-drill-row avp-drill-group">
             <td class="avp-drill-label avp-drill-group-label">${esc(subLabel.get(key) || 'Sonstiges')}</td>
             ${planCells(groupAmounts)}
-            <td class="avp-cell avp-drill-cell avp-ytd"></td>
+            <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep"></td>
             <td class="avp-cell avp-drill-cell plan avp-ytd">${gYtd !== 0 ? fmtActual(gYtd) : '<span class="avp-zero">—</span>'}</td>
             <td class="avp-cell avp-drill-cell avp-ytd"></td>
           </tr>`);
