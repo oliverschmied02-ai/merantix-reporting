@@ -11,6 +11,7 @@ import {
   getRevenueDrivers, createRevenueDriver, updateRevenueDriver, deleteRevenueDriver, generateFromDrivers,
 } from '../lib/db.js';
 import { showToast } from './screen.js';
+import { alertDialog } from './dialog.js';
 import { aggregateByCategory, compareVersions, COMPARE_ROWS } from '../lib/plan-compare.js';
 import { renderPersonnelView, setPersonnelRefresh } from './personnel.js';
 
@@ -776,7 +777,8 @@ export async function planSaveEdits() {
     setSaveStatus('saved');
   } catch (e) {
     setSaveStatus('error');
-    showToast('Fehler beim Speichern: ' + e.message);
+    // Losing planning edits is critical — require acknowledgement.
+    alertDialog('Fehler beim Speichern: ' + e.message);
   } finally {
     _saving = false;
     // If new edits arrived during the save, persist them too.

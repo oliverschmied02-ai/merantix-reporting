@@ -5,6 +5,7 @@ import { DEFAULT_PL_DEF } from '../data/default-pl.js';
 import { saveCoA, saveRules } from '../lib/storage.js';
 import { isInGUV } from '../lib/compute.js';
 import { showToast } from './screen.js';
+import { confirmDialog } from './dialog.js';
 import { initTransactionPicker } from './rules.js';
 import { renderRulesList } from './rules.js';
 
@@ -23,6 +24,8 @@ export function toggleSettings(show) {
   modal.classList.toggle('open', show);
   if (show) {
     switchSettingsTab('users');
+    // Move focus into the dialog for keyboard users.
+    modal.querySelector('.sm-tab')?.focus?.();
   }
 }
 
@@ -37,6 +40,30 @@ export function switchSettingsTab(tab) {
   if (tab === 'coa') renderCoATree();
   if (tab === 'data') renderDataStats();
   if (tab === 'audit' && window.renderAuditLog) window.renderAuditLog();
+}
+
+// Open Settings → Kontenplan directly (e.g. from the "Konten außerhalb
+// GuV-Mapping" bar in the P&L). `event` is passed when triggered from inside a
+// <summary>, so we suppress the default <details> toggle.
+export function openAccountMapping(event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  toggleSettings(true);
+  switchSettingsTab('coa');
+}
+
+// Assign a single unmapped account to a P&L sub-group directly from the
+// warning bar. `value` is "<itemId>::<subId>". saveCoA() persists, rebuilds
+// the account map and re-renders the P&L, so the account leaves the bar.
+export function mapUnmappedAccount(acct, value) {
+  const [itemId, subId] = String(value || '').split('::');
+  if (!itemId || !subId) return;
+  const item = APP.plDef.find(i => i.id === itemId);
+  const sub  = item?.subs?.find(s => s.id === subId);
+  if (!sub) return;
+  const n = Number(acct);
+  if (!sub.accounts.includes(n)) { sub.accounts.push(n); sub.accounts.sort((a, b) => a - b); }
+  saveCoA();
+  showToast(`Konto ${acct} → ${sub.label}`, 'success');
 }
 
 // Track open account picker
@@ -318,26 +345,26 @@ export function removeAccount(itemId, subId, acct) {
   saveCoA();
 }
 
-export function removeSub(itemId, subId) {
+export async function removeSub(itemId, subId) {
   const item = APP.plDef.find(i => i.id === itemId);
   if (!item) return;
   const sub = item.subs?.find(s => s.id === subId);
   const label = sub ? `"${sub.label}"` : 'diese Unterkategorie';
   const orphanCount = APP.rules.filter(r => r.targetItemId === itemId && r.targetSubId === subId).length;
   const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
-  if (!confirm(`${label} löschen?${warning}`)) return;
+  if (!await confirmDialog(`${label} löschen?${warning}`, { danger: true, okLabel: 'Löschen' })) return;
   item.subs = item.subs.filter(s => s.id !== subId);
   APP.rules = APP.rules.filter(r => !(r.targetItemId === itemId && r.targetSubId === subId));
   saveCoA();
   saveRules();
 }
 
-export function removeItem(itemId) {
+export async function removeItem(itemId) {
   const item = APP.plDef.find(i => i.id === itemId);
   if (!item) return;
   const orphanCount = APP.rules.filter(r => r.targetItemId === itemId).length;
   const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
-  if (!confirm(`"${item.label}" löschen?${warning}`)) return;
+  if (!await confirmDialog(`"${item.label}" löschen?${warning}`, { danger: true, okLabel: 'Löschen' })) return;
   APP.plDef = APP.plDef.filter(i => i.id !== itemId);
   APP.rules = APP.rules.filter(r => r.targetItemId !== itemId);
   saveCoA();
@@ -402,8 +429,8 @@ export function updateRatioFormula(itemId, field, value) {
   saveCoA();
 }
 
-export function restoreDefaultPL() {
-  if (confirm('Standard-Kontenplan wiederherstellen?')) {
+export async function restoreDefaultPL() {
+  if (await confirmDialog('Standard-Kontenplan wiederherstellen?', { okLabel: 'Wiederherstellen' })) {
     APP.plDef = deepClone(DEFAULT_PL_DEF);
     saveCoA();
   }

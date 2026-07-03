@@ -10,7 +10,7 @@ import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
   closeNewSectionModal, confirmNewSection, updateRatioFormula,
   restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem,
-  initOutsidePickerClose } from './ui/settings.js';
+  openAccountMapping, mapUnmappedAccount, initOutsidePickerClose } from './ui/settings.js';
 import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection, txnPickerPage,
@@ -34,6 +34,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 import { initDispatch, registerBuiltins } from './ui/dispatch.js';
+import { confirmDialog, alertDialog } from './ui/dialog.js';
 
 // ── Navigation wrapper — triggers screen-specific data loads ─────────
 function setMainView(name) {
@@ -52,7 +53,7 @@ Object.assign(window, {
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
   closeNewSectionModal, confirmNewSection, updateRatioFormula,
-  restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem,
+  restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem, openAccountMapping, mapUnmappedAccount,
   initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection, txnPickerPage,
@@ -228,12 +229,12 @@ async function confirmResetPw() {
 window.confirmResetPw = confirmResetPw;
 
 async function removeUser(id) {
-  if (!confirm('Benutzer löschen?')) return;
+  if (!await confirmDialog('Benutzer löschen?', { danger: true, okLabel: 'Löschen' })) return;
   try {
     await deleteUser(id);
     renderUsersList();
   } catch (e) {
-    alert(e.message);
+    alertDialog(e.message);
   }
 }
 window.removeUser = removeUser;
@@ -334,7 +335,7 @@ async function approveAccessRequest(id) {
 window.approveAccessRequest = approveAccessRequest;
 
 async function rejectAccessRequest(id) {
-  if (!confirm('Anfrage ablehnen und löschen?')) return;
+  if (!await confirmDialog('Anfrage ablehnen und löschen?', { danger: true, okLabel: 'Ablehnen' })) return;
   try {
     await rejectRequest(id);
     renderRequestsList();
@@ -372,6 +373,8 @@ export async function changeYear() {
   if (!year) { buildPL(); return; }
   if (!APP.loadedYears.has(year)) {
     if (sel) sel.disabled = true;
+    const wrap = document.querySelector('#pl-screen .pl-wrap');
+    wrap?.classList.add('loading');
     try {
       const data = await loadTransactionsForYear(year);
       APP.allTransactions = APP.allTransactions.filter(t => t.wjYear !== year);
@@ -381,6 +384,7 @@ export async function changeYear() {
       showToast('Fehler beim Laden des Jahres ' + year + ': ' + e.message);
     } finally {
       if (sel) sel.disabled = false;
+      wrap?.classList.remove('loading');
     }
   }
   buildPL();
@@ -601,6 +605,13 @@ async function initApp() {
   });
   initOutsidePickerClose();
   window.addEventListener('resize', updateAboveTableHeight);
+
+  // Escape closes the top surface (drill panel first, then settings modal).
+  document.addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (document.getElementById('drill-panel')?.classList.contains('open')) { closeDrill(); return; }
+    if (document.getElementById('settings-modal')?.classList.contains('open')) toggleSettings(false);
+  });
 
   // Check if already logged in
   showLoginScreen(); // default: show login
