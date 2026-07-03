@@ -1422,12 +1422,12 @@ textarea.plan-input { resize: vertical; }
 }
 .avp-month-head {
   text-align: center; font-weight: 700; padding: .4rem .3rem .2rem;
-  border-bottom: 1px solid var(--c-border); border-left: 2px solid var(--c-border);
+  border-bottom: 1px solid var(--c-border); border-left: 1px solid var(--c-border-soft);
   background: var(--c-bg); white-space: nowrap; color: var(--c-text);
 }
 .avp-annual-head {
   text-align: center; font-weight: 700; padding: .4rem .5rem .2rem;
-  border-bottom: 1px solid var(--c-border); border-left: 3px solid #c7d2fe;
+  border-bottom: 1px solid var(--c-border); border-left: 2px solid #c7d2fe;
   background: var(--c-surface-3); white-space: nowrap; color: var(--c-primary);
 }
 .avp-sub {
@@ -1435,7 +1435,7 @@ textarea.plan-input { resize: vertical; }
   border-bottom: 2px solid var(--c-border); background: #fafbfd;
   color: var(--c-text-faint); white-space: nowrap;
 }
-.avp-sub.ist    { color: var(--c-primary); border-left: 2px solid var(--c-border); }
+.avp-sub.ist    { color: var(--c-primary); border-left: 1px solid var(--c-border-soft); }
 .avp-sub.plan   { color: var(--c-accent); }
 .avp-sub.delta  { color: #64748b; }
 
@@ -1454,10 +1454,13 @@ textarea.plan-input { resize: vertical; }
   z-index: 2;
 }
 
-.avp-cell.ist   { color: var(--c-primary); border-left: 2px solid var(--c-border-soft); }
+.avp-cell.ist   { color: var(--c-primary); border-left: 1px solid var(--c-border-soft); }
 .avp-cell.plan  { color: var(--c-accent); }
 .avp-cell.delta { font-weight: 700; }
-.avp-ytd        { border-left: 3px solid #c7d2fe; background: #fafbff; }
+/* Gesamt (YTD) group: subtle background tint on all three cells, and a single
+   divider on the group's left edge (.avp-ytd-sep) — not one line per cell. */
+.avp-ytd        { background: #fafbff; }
+.avp-ytd-sep    { border-left: 2px solid #c7d2fe !important; }
 
 .avp-pct { font-size: .68rem; font-weight: 500; color: var(--c-text-soft); }
 .avp-zero { color: #d1d8e8; }
