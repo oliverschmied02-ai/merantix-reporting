@@ -384,21 +384,21 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
         </tr>`];
     }
 
-    const drillRows = catItems.map(li => {
-      const liAmounts = liEntryMap.get(li.id) || {};
+    // Plan-only monthly cells (Ist/Δ columns stay blank at line-item level)
+    const planCells = amounts => visibleMonths.map(m => {
+      const v = amounts[m] ?? 0;
+      return `
+        <td class="avp-cell avp-drill-cell"></td>
+        <td class="avp-cell avp-drill-cell plan">${v !== 0 ? fmtActual(v) : '<span class="avp-zero">—</span>'}</td>
+        <td class="avp-cell avp-drill-cell"></td>`;
+    }).join('');
+    const rangeYtd = amounts => Object.entries(amounts)
+      .filter(([m]) => parseInt(m) <= upTo)
+      .reduce((s, [, v]) => s + v, 0);
 
-      const liMonthlyCells = visibleMonths.map(m => {
-        const planAmt = liAmounts[m] ?? 0;
-        return `
-          <td class="avp-cell avp-drill-cell"></td>
-          <td class="avp-cell avp-drill-cell plan">${planAmt !== 0 ? fmtActual(planAmt) : '<span class="avp-zero">—</span>'}</td>
-          <td class="avp-cell avp-drill-cell"></td>`;
-      }).join('');
-
-      const liYtd = Object.entries(liAmounts)
-        .filter(([m]) => parseInt(m) <= upTo)
-        .reduce((s, [, v]) => s + v, 0);
-
+    const liDrillRow = li => {
+      const a = liEntryMap.get(li.id) || {};
+      const ytd = rangeYtd(a);
       return `
         <tr class="avp-drill-row">
           <td class="avp-drill-label">
@@ -406,14 +406,54 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
             ${esc(li.label)}
             ${li.entity ? `<span class="avp-drill-tag">${esc(li.entity)}</span>` : ''}
           </td>
-          ${liMonthlyCells}
+          ${planCells(a)}
           <td class="avp-cell avp-drill-cell avp-ytd"></td>
-          <td class="avp-cell avp-drill-cell plan avp-ytd">${liYtd !== 0 ? fmtActual(liYtd) : '<span class="avp-zero">—</span>'}</td>
+          <td class="avp-cell avp-drill-cell plan avp-ytd">${ytd !== 0 ? fmtActual(ytd) : '<span class="avp-zero">—</span>'}</td>
           <td class="avp-cell avp-drill-cell avp-ytd"></td>
         </tr>`;
-    });
+    };
 
-    return [mainRow, ...drillRows];
+    // OpEx keeps its sBA sub-category structure (Fremdleistungen, Events …):
+    // group the line items by item_id and show a subtotal row per group, so
+    // the drill-down mirrors the planning grid instead of a flat list.
+    if (row.key === 'opex') {
+      const opexDef  = APP.plDef.find(s => s.id === 'opex');
+      const subs     = opexDef?.subs ?? [];
+      const subLabel = new Map(subs.map(s => [s.id, s.label]));
+      const byItem   = new Map();
+      for (const li of catItems) {
+        const key = subLabel.has(li.item_id) ? li.item_id : '_other';
+        if (!byItem.has(key)) byItem.set(key, []);
+        byItem.get(key).push(li);
+      }
+      const orderedKeys = [
+        ...subs.map(s => s.id).filter(k => byItem.has(k)),
+        ...(byItem.has('_other') ? ['_other'] : []),
+      ];
+      const out = [mainRow];
+      for (const key of orderedKeys) {
+        const lis = byItem.get(key);
+        // sub-category subtotal = sum of its line items
+        const groupAmounts = {};
+        for (const li of lis) {
+          const a = liEntryMap.get(li.id) || {};
+          for (const [m, v] of Object.entries(a)) groupAmounts[m] = (groupAmounts[m] || 0) + v;
+        }
+        const gYtd = rangeYtd(groupAmounts);
+        out.push(`
+          <tr class="avp-drill-row avp-drill-group">
+            <td class="avp-drill-label avp-drill-group-label">${esc(subLabel.get(key) || 'Sonstiges')}</td>
+            ${planCells(groupAmounts)}
+            <td class="avp-cell avp-drill-cell avp-ytd"></td>
+            <td class="avp-cell avp-drill-cell plan avp-ytd">${gYtd !== 0 ? fmtActual(gYtd) : '<span class="avp-zero">—</span>'}</td>
+            <td class="avp-cell avp-drill-cell avp-ytd"></td>
+          </tr>`);
+        for (const li of lis) out.push(liDrillRow(li));
+      }
+      return out;
+    }
+
+    return [mainRow, ...catItems.map(liDrillRow)];
   }).join('');
 
   return `
