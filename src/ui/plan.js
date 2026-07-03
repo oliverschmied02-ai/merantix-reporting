@@ -132,7 +132,7 @@ export async function submitCreateVersion() {
   try {
     const newVersion = await createPlanVersion(name, year, type, notes || null);
     closeCreateVersion();
-    showToast('Version erstellt');
+    showToast('Version erstellt', 'success');
     await planOpenVersion(newVersion.id);
   } catch (e) {
     errEl.textContent = e.message;
@@ -474,7 +474,7 @@ export async function planOpexCategoryChange(liId, sel) {
     li.item_id = newItemId;
     for (const e of _entries) if (e.line_item_id === liId) e.item_id = newItemId;
     renderGrid();  // move the row into its new category group
-    showToast('Kategorie geändert');
+    showToast('Kategorie geändert', 'success');
   } catch (e) {
     sel.value = li.item_id;
     showToast('Fehler: ' + e.message);
@@ -903,7 +903,7 @@ export async function submitAddLineItem() {
 
     closeLineItemModal();
     renderGrid();
-    showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt');
+    showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt', 'success');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -922,7 +922,7 @@ export async function planDeleteLineItem(id) {
       if (key.startsWith(`${id}_`)) delete _pendingEdits[key];
     }
     renderGrid();
-    showToast('Position gelöscht');
+    showToast('Position gelöscht', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -946,7 +946,7 @@ export function planConfirmDeleteVersion(id) {
 export async function planDeleteVersionConfirmed(id) {
   try {
     await (await import('../lib/db.js')).deletePlanVersion(id);
-    showToast('Version gelöscht');
+    showToast('Version gelöscht', 'success');
     planBackToList();
     await loadVersions();
   } catch (e) {
@@ -1324,7 +1324,7 @@ export async function submitDriver() {
     await generateFromDrivers(liId);
     _entries = await getPlanEntries(_currentVersion.id);
     renderGrid();
-    showToast('Umsatz aktualisiert');
+    showToast('Umsatz aktualisiert', 'success');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -1358,7 +1358,7 @@ export async function driverDelete(driverId) {
     await generateFromDrivers(liId);
     _entries = await getPlanEntries(_currentVersion.id);
     renderGrid();
-    showToast('Treiber gelöscht');
+    showToast('Treiber gelöscht', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }

@@ -431,7 +431,7 @@ export function importCoADialog() {
         if (Array.isArray(imported)) {
           APP.plDef = imported;
           saveCoA();
-          showToast('Kontenplan importiert');
+          showToast('Kontenplan importiert', 'success');
         } else showToast('Ungültiges JSON-Format');
       } catch (err) {
         showToast('Import-Fehler: ' + err.message);

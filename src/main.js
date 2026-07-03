@@ -219,7 +219,7 @@ async function confirmResetPw() {
   try {
     await resetUserPassword(_resetTargetId, pw);
     cancelResetPw();
-    showToast('Passwort aktualisiert');
+    showToast('Passwort aktualisiert', 'success');
   } catch (e) {
     errEl.textContent = e.message;
   }
@@ -324,7 +324,7 @@ async function approveAccessRequest(id) {
     const name = user?.name ?? '';
     await renderRequestsList();
     await renderUsersList();
-    showToast(`${esc(name)} freigeschaltet`);
+    showToast(`${esc(name)} freigeschaltet`, 'success');
     showTempPwModal(name, tempPassword);
   } catch (e) {
     showToast('Fehler: ' + e.message);
@@ -502,7 +502,7 @@ async function submitChangePassword() {
   try {
     await changeMyPassword(newPw);
     closeChangePassword();
-    showToast('Passwort geändert');
+    showToast('Passwort geändert', 'success');
   } catch (e) {
     errEl.textContent = e.message; errEl.classList.remove('hidden');
   } finally {

@@ -1,3 +1,4 @@
+import Papa from 'papaparse';
 import { APP } from '../state.js';
 import { parseDE, parseDateDE, parseStapel } from './utils.js';
 

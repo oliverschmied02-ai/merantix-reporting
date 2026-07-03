@@ -205,7 +205,7 @@ export async function editPerson(lineItemId, personId) {
 export async function deletePerson(lineItemId, personId) {
   try {
     await deletePersonnelDriver(lineItemId, personId);
-    showToast('Person gelöscht');
+    showToast('Person gelöscht', 'success');
     await _autoGenerate();
   } catch (e) { showToast('Fehler: ' + e.message); }
 }
@@ -252,7 +252,7 @@ export async function submitPerson() {
       await createPersonnelDriver(_personModal.lineItemId, payload);
     }
     closePersonModal();
-    showToast(_personModal.editId ? 'Person aktualisiert' : 'Person hinzugefügt');
+    showToast(_personModal.editId ? 'Person aktualisiert' : 'Person hinzugefügt', 'success');
     await _autoGenerate();
   } catch (e) {
     errEl.textContent = e.message;

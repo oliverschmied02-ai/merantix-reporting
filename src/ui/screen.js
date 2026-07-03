@@ -1,9 +1,11 @@
 import { renderFilesScreen } from './files.js';
 
-export function showToast(msg) {
+// type: 'error' (default, red) | 'success' (green) | 'info' (neutral dark).
+// Default stays 'error' so existing error call sites keep their styling untouched.
+export function showToast(msg, type = 'error') {
   const t = document.getElementById('toast');
   t.textContent = msg;
-  t.className = 'error';
+  t.className = type === 'error' ? 'error' : type === 'success' ? 'success' : '';
   t.style.display = 'block';
   setTimeout(() => (t.style.display = 'none'), 7000);
 }
@@ -35,10 +37,6 @@ export function setScreen(name) {
     document.getElementById('nav-avp')?.classList.toggle('active', name === 'avp-screen');
     if (name === 'files-screen') renderFilesScreen();
   }
-}
-
-export function setMainView(name) {
-  setScreen(name);
 }
 
 export function setLoading(msg) {
