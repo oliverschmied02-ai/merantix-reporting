@@ -22,10 +22,29 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 app.use(helmet({
-  // CSP disabled: the app uses inline onclick handlers and Vite module scripts
-  // extensively. A meaningful CSP requires migrating all onclick to event
-  // delegation + nonce-based script loading — tracked as future work.
-  contentSecurityPolicy: false,
+  // CSP is now enforced. Inline on*= handlers were migrated to event
+  // delegation (src/ui/dispatch.js), so script-src can be strict 'self' with
+  // no 'unsafe-inline' — the key XSS defense. Inline style= attributes remain
+  // (149 of them) so style-src keeps 'unsafe-inline'; styles can't execute
+  // code. Google Fonts is served from the documented CDN hosts.
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc:     ["'self'"],
+      baseUri:        ["'self'"],
+      objectSrc:      ["'none'"],
+      frameAncestors: ["'none'"],
+      formAction:     ["'self'"],
+      scriptSrc:      ["'self'"],
+      scriptSrcAttr:  ["'none'"], // hard-block inline event handlers (defense in depth)
+      styleSrc:       ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc:        ["'self'", "https://fonts.gstatic.com"],
+      imgSrc:         ["'self'", "data:"],
+      connectSrc:     ["'self'"],
+      // Only upgrade to HTTPS in production; would break local http testing.
+      ...(process.env.NODE_ENV === 'production' ? { upgradeInsecureRequests: [] } : {}),
+    },
+  },
   crossOriginEmbedderPolicy: false,
   // All other helmet defaults remain: HSTS, X-Frame-Options: DENY,
   // X-Content-Type-Options: nosniff, Referrer-Policy, X-DNS-Prefetch-Control
