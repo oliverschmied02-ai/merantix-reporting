@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { monthlyGross, spreadPersonnel, spreadPersonnelDrivers } from '../src/lib/plan-personnel.js';
+import { monthlyGross, spreadPersonnel, spreadPersonnelDrivers, splitPersonnel } from '../src/lib/plan-personnel.js';
 
 // Shorthand to build a base driver
 const base = (overrides = {}) => ({
@@ -218,14 +218,31 @@ describe('spreadPersonnel — bonus', () => {
     assert.equal(dec.amount, Math.round((salaryPart + 20000) * 100) / 100);
   });
 
-  it('burden is NOT applied to bonus', () => {
+  it('burden IS applied to bonus (AG-NK on bonus)', () => {
     const entries = spreadPersonnel(base({
       annual_bonus:       12000,
       payroll_burden_rate: 0.2,
     }), 2025);
     const dec = entries.find(e => e.month === 12);
-    // December: salary 10000 × 1.2 + bonus 12000 (no burden on bonus) = 24000
-    assert.equal(dec.amount, 24000);
+    // December: salary 10000 × 1.2 + bonus 12000 × 1.2 = 12000 + 14400 = 26400
+    assert.equal(dec.amount, 26400);
+  });
+});
+
+// ── splitPersonnel — bonus carries employer burden into the social stream ──
+describe('splitPersonnel — bonus social charges', () => {
+  it('adds AG-NK on the bonus to the social stream in bonus_month', () => {
+    const { wages, social } = splitPersonnel(base({
+      annual_bonus:        12000,
+      bonus_month:         6,
+      payroll_burden_rate: 0.2,
+    }), 2025);
+    const wJun = wages.find(e => e.month === 6);
+    const sJun = social.find(e => e.month === 6);
+    // wages: salary 10000 + bonus 12000 = 22000
+    assert.equal(wJun.amount, 22000);
+    // social: (salary 10000 + bonus 12000) × 0.2 = 4400
+    assert.equal(sJun.amount, 4400);
   });
 });
 
