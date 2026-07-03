@@ -353,7 +353,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
 
     const mainRow = `
       <tr class="${rowClass} ${isDrillable ? 'avp-row-drillable' : ''}"
-          ${isDrillable ? `onclick="avpToggleDrilldown('${row.key}')"` : ''}>
+          ${isDrillable ? `data-act="avpToggleDrilldown" data-act-args="[&quot;${row.key}&quot;]"` : ''}>
         <td class="avp-label">
           ${drillChevron}${esc(row.label)}
         </td>

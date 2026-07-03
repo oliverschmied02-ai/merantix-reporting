@@ -61,7 +61,7 @@ export function buildPL() {
     const pct = isYTD && ytdRev ? ` (${((Math.abs(v) / ytdRev) * 100).toFixed(1)}%)` : '';
     let drillAttr = '';
     if (acct !== undefined && periodIdx !== undefined) {
-      drillAttr = ` class="data-cell" onclick="openDrill(${acct},'${subId}','${itemId}',${periodIdx})"`;
+      drillAttr = ` class="data-cell" data-act="openDrill" data-act-args="[${acct},&quot;${subId}&quot;,&quot;${itemId}&quot;,${periodIdx}]"`;
     }
     return `<td${drillAttr}><span class="${cls}">${sign}${txt}</span><span class="vm" style="font-size:.65rem">${pct}</span></td>`;
   }
@@ -201,11 +201,11 @@ export function buildPL() {
           const vcls = cellColor(v, subNB, false);
           const sign = subNB === 'S' && v > 0 ? '− ' : '';
           const qb = (mode === 'monat' && [3,6,9].includes(periods[i].idx)) || (mode === 'quartal' && i > 0) ? 'border-left:1px solid #e4e9f5' : '';
-          ahtmlA += `<td style="${qb}" class="data-cell" onclick="openDrill(${acct},'${sub.id}','${item.id}',${i})"><span class="${vcls}">${v === 0 ? '—' : sign + fmtK(Math.abs(v))}</span></td>`;
+          ahtmlA += `<td style="${qb}" class="data-cell" data-act="openDrill" data-act-args="[${acct},&quot;${sub.id}&quot;,&quot;${item.id}&quot;,${i}]"><span class="${vcls}">${v === 0 ? '—' : sign + fmtK(Math.abs(v))}</span></td>`;
         }
         const avcls = cellColor(avYTD, subNB, false);
         const aysign = subNB === 'S' && avYTD > 0 ? '− ' : '';
-        ahtmlA += `<td class="td-ytd data-cell" onclick="openDrill(${acct},'${sub.id}','${item.id}',-1)"><span class="${avcls}">${avYTD === 0 ? '—' : aysign + fmtFull(Math.abs(avYTD))}</span></td>`;
+        ahtmlA += `<td class="td-ytd data-cell" data-act="openDrill" data-act-args="[${acct},&quot;${sub.id}&quot;,&quot;${item.id}&quot;,-1]"><span class="${avcls}">${avYTD === 0 ? '—' : aysign + fmtFull(Math.abs(avYTD))}</span></td>`;
         trA.innerHTML = ahtmlA;
         tbody.appendChild(trA);
       }

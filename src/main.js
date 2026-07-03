@@ -33,6 +33,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
   submitDriver, driverGenerate, driverDelete, driverEdit } from './ui/plan.js';
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
+import { initDispatch, registerBuiltins } from './ui/dispatch.js';
 
 // ── Navigation wrapper — triggers screen-specific data loads ─────────
 function setMainView(name) {
@@ -183,12 +184,12 @@ async function renderUsersList() {
           </div>
           <span style="padding:.15rem .55rem;border-radius:20px;font-size:.68rem;font-weight:700;background:${isAdmin ? '#eef1ff' : '#f0fdf4'};color:${isAdmin ? '#4f6ef7' : '#16a34a'}">${isAdmin ? 'Admin' : 'Viewer'}</span>
           ${!isMe ? `
-          <select onchange="setUserRole(${u.id},this.value)" style="padding:.25rem .45rem;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;font-family:inherit;background:#fff;color:#1e2433;cursor:pointer">
+          <select data-change="setUserRole" data-change-args="[${u.id},&quot;@value&quot;]" style="padding:.25rem .45rem;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;font-family:inherit;background:#fff;color:#1e2433;cursor:pointer">
             <option value="viewer" ${!isAdmin ? 'selected' : ''}>Viewer</option>
             <option value="admin" ${isAdmin ? 'selected' : ''}>Admin</option>
           </select>
-          <button onclick="startResetPw(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
-          <button onclick="removeUser(${u.id})" style="padding:.25rem .55rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">✕</button>
+          <button data-act="startResetPw" data-act-args="[${u.id}]" style="padding:.25rem .55rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">🔑 PW</button>
+          <button data-act="removeUser" data-act-args="[${u.id}]" style="padding:.25rem .55rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.7rem;cursor:pointer;font-family:inherit">✕</button>
           ` : ''}
         </div>`;
       }).join('')}`;
@@ -309,8 +310,8 @@ async function renderRequestsList() {
           <div style="color:#a0aabb;font-size:.7rem;margin-top:.4rem">${new Date(r.created_at).toLocaleDateString('de-DE')}</div>
         </div>
         <div style="display:flex;flex-direction:column;gap:.35rem;flex-shrink:0">
-          <button onclick="approveAccessRequest(${r.id})" style="padding:.3rem .7rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit">✓ Freischalten</button>
-          <button onclick="rejectAccessRequest(${r.id})" style="padding:.3rem .7rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">✕ Ablehnen</button>
+          <button data-act="approveAccessRequest" data-act-args="[${r.id}]" style="padding:.3rem .7rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.72rem;font-weight:600;cursor:pointer;font-family:inherit">✓ Freischalten</button>
+          <button data-act="rejectAccessRequest" data-act-args="[${r.id}]" style="padding:.3rem .7rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">✕ Ablehnen</button>
         </div>
       </div>`).join('');
   } catch (e) {
@@ -464,7 +465,7 @@ function applyRole(user) {
   // Settings gear in top bar
   document.querySelectorAll('.btn-settings').forEach(b => b.classList.toggle('hidden', !isAdmin));
   // Settings item in sidebar footer (first button in sb-footer)
-  const sbSettings = document.querySelector('.sb-footer .sb-nav-item[onclick="toggleSettings()"]');
+  const sbSettings = document.querySelector('.sb-footer .sb-nav-item[data-act="toggleSettings"]');
   if (sbSettings) sbSettings.classList.toggle('hidden', !isAdmin);
   // Change-password button (shown for all)
   const cpBtn = document.getElementById('sb-change-pw');
@@ -567,6 +568,10 @@ async function loadAndShowApp(user) {
 
 // ── App init ──────────────────────────────────────────────────────────
 async function initApp() {
+  // Central event delegation (replaces inline on*= handlers → CSP-safe)
+  registerBuiltins();
+  initDispatch();
+
   // Wire up event listeners
   const dropZone  = document.getElementById('drop-zone');
   const fileInput = document.getElementById('file-input');
@@ -578,6 +583,13 @@ async function initApp() {
     e.preventDefault(); dropZone.classList.remove('drag-over');
     handleFile(e.dataTransfer.files[0]);
   });
+  // Extra drop zone (was inline ondragover/ondragleave/ondrop in index.html)
+  const dropZoneExtra = document.getElementById('drop-zone-extra');
+  if (dropZoneExtra) {
+    dropZoneExtra.addEventListener('dragover', e => { e.preventDefault(); dropZoneExtra.classList.add('drag-over'); });
+    dropZoneExtra.addEventListener('dragleave', () => dropZoneExtra.classList.remove('drag-over'));
+    dropZoneExtra.addEventListener('drop', e => handleDrop(e, 'extra'));
+  }
   document.getElementById('overlay').addEventListener('click', () => {
     if (document.getElementById('drill-panel').classList.contains('open')) closeDrill();
   });

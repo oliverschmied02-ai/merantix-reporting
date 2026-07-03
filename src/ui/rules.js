@@ -88,8 +88,8 @@ export function updateTransactionPicker(resetPage = true) {
     const soll  = t.soll  ? fmtFull(t.soll)  : '—';
     const haben = t.haben ? fmtFull(t.haben) : '—';
 
-    return `<tr style="border-bottom:1px solid #f0f2f8" onmouseover="this.style.background='#f8f9fd'" onmouseout="this.style.background=''">
-      <td style="padding:.3rem;text-align:center"><input type="checkbox" data-txn-idx="${i}" ${isSelected ? 'checked' : ''} onchange="toggleTransactionSelection(${i})"></td>
+    return `<tr class="txn-row">
+      <td style="padding:.3rem;text-align:center"><input type="checkbox" data-txn-idx="${i}" ${isSelected ? 'checked' : ''} data-change="toggleTransactionSelection" data-change-args="[${i}]"></td>
       <td style="padding:.3rem;color:#8b95a9;font-size:.68rem">${d}</td>
       <td style="padding:.3rem;max-width:60px;overflow:hidden;text-overflow:ellipsis;color:#a0aabb;font-size:.68rem">${esc(t.beleg || '—')}</td>
       <td style="padding:.3rem;color:#4f6ef7;font-weight:600">${t.ktonr}</td>
@@ -192,13 +192,13 @@ export function renderRulesList() {
     const desc = `${rule.matchOp} "${rule.matchValue}" → ${item?.label || '?'} / ${sub?.label || '?'}`;
     return `
       <div class="rule-item">
-        <input type="checkbox" class="rule-toggle" ${rule.enabled ? 'checked' : ''} onchange="toggleRule('${rule.id}')">
+        <input type="checkbox" class="rule-toggle" ${rule.enabled ? 'checked' : ''} data-change="toggleRule" data-change-args="[&quot;${rule.id}&quot;]">
         <div class="rule-details">
           <div class="rule-details-name">${esc(rule.name)}</div>
           <div class="rule-details-desc">${esc(desc)}</div>
         </div>
         <div class="rule-actions">
-          <button class="rule-action-btn" onclick="deleteRule('${rule.id}')">×</button>
+          <button class="rule-action-btn" data-act="deleteRule" data-act-args="[&quot;${rule.id}&quot;]">×</button>
         </div>
       </div>
     `;

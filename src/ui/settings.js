@@ -53,8 +53,8 @@ export function renderCoATree() {
     const isLast  = idx === defLen - 1;
     const reorderBtns = `
       <div class="coa-reorder">
-        <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',-1)" title="Nach oben" ${isFirst?'disabled':''}>▲</button>
-        <button class="coa-reorder-btn" onclick="movePlDefItem('${item.id}',+1)" title="Nach unten" ${isLast?'disabled':''}>▼</button>
+        <button class="coa-reorder-btn" data-act="movePlDefItem" data-act-args="[&quot;${item.id}&quot;,-1]" title="Nach oben" ${isFirst?'disabled':''}>▲</button>
+        <button class="coa-reorder-btn" data-act="movePlDefItem" data-act-args="[&quot;${item.id}&quot;,1]" title="Nach unten" ${isLast?'disabled':''}>▼</button>
       </div>`;
 
     // Computed rows: show as a separator/subtotal row (not editable, just reorderable)
@@ -75,17 +75,17 @@ export function renderCoATree() {
       itemDiv.innerHTML = `
         <div class="coa-ratio-header">
           ${reorderBtns}
-          <input type="text" class="coa-item-label-input" value="${esc(item.label)}" onchange="updateItemLabel('${item.id}',this.value)" style="flex:1">
+          <input type="text" class="coa-item-label-input" value="${esc(item.label)}" data-change="updateItemLabel" data-change-args="[&quot;${item.id}&quot;,&quot;@value&quot;]" style="flex:1">
           <span class="coa-ratio-badge">% Kennzahl</span>
-          <button class="coa-btn" onclick="removeItem('${item.id}')" title="Löschen" style="margin-left:.3rem">×</button>
+          <button class="coa-btn" data-act="removeItem" data-act-args="[&quot;${item.id}&quot;]" title="Löschen" style="margin-left:.3rem">×</button>
         </div>
         <div style="font-size:.68rem;color:#8b95a9;margin-bottom:.35rem;font-weight:600">Formel: Zähler ÷ Nenner × 100</div>
         <div class="coa-ratio-formula">
-          <select onchange="updateRatioFormula('${item.id}','numerator',this.value)">
+          <select data-change="updateRatioFormula" data-change-args="[&quot;${item.id}&quot;,&quot;numerator&quot;,&quot;@value&quot;]">
             ${APP.plDef.filter(i=>i.type==='computed'||i.type==='section'||i.type==='section_mixed').map(i=>`<option value="${i.id}" ${item.numerator===i.id?'selected':''}>${esc(i.label)}</option>`).join('')}
           </select>
           <div class="coa-ratio-div">÷</div>
-          <select onchange="updateRatioFormula('${item.id}','denominator',this.value)">
+          <select data-change="updateRatioFormula" data-change-args="[&quot;${item.id}&quot;,&quot;denominator&quot;,&quot;@value&quot;]">
             ${APP.plDef.filter(i=>i.type==='computed'||i.type==='section'||i.type==='section_mixed').map(i=>`<option value="${i.id}" ${item.denominator===i.id?'selected':''}>${esc(i.label)}</option>`).join('')}
           </select>
         </div>`;
@@ -100,16 +100,16 @@ export function renderCoATree() {
     let html = `
       <div class="coa-item-header">
         ${reorderBtns}
-        <input type="text" class="coa-item-label-input" value="${esc(item.label)}" onchange="updateItemLabel('${item.id}',this.value)">
+        <input type="text" class="coa-item-label-input" value="${esc(item.label)}" data-change="updateItemLabel" data-change-args="[&quot;${item.id}&quot;,&quot;@value&quot;]">
         ${!isMixed
-          ? `<select class="coa-selector" onchange="updateItemBalance('${item.id}',this.value)">
+          ? `<select class="coa-selector" data-change="updateItemBalance" data-change-args="[&quot;${item.id}&quot;,&quot;@value&quot;]">
               <option value="S" ${item.normalBalance==='S'?'selected':''}>Aufwand (S)</option>
               <option value="H" ${item.normalBalance==='H'?'selected':''}>Ertrag (H)</option>
             </select>`
           : `<span style="color:#a0aabb;font-size:.72rem;font-weight:600">Mixed</span>`}
         <div class="coa-buttons">
-          <button class="coa-btn" onclick="addSubDialog('${item.id}')" title="Unterkategorie hinzufügen">+ Sub</button>
-          <button class="coa-btn" onclick="removeItem('${item.id}')" title="Löschen">×</button>
+          <button class="coa-btn" data-act="addSubDialog" data-act-args="[&quot;${item.id}&quot;]" title="Unterkategorie hinzufügen">+ Sub</button>
+          <button class="coa-btn" data-act="removeItem" data-act-args="[&quot;${item.id}&quot;]" title="Löschen">×</button>
         </div>
       </div>`;
 
@@ -120,20 +120,20 @@ export function renderCoATree() {
         html += `
           <div class="coa-sub">
             <div class="coa-sub-header">
-              <input type="text" class="coa-sub-label" value="${esc(sub.label)}" onchange="updateSubLabel('${item.id}','${sub.id}',this.value)">
-              <button class="coa-btn" onclick="removeSub('${item.id}','${sub.id}')" title="Löschen">×</button>
+              <input type="text" class="coa-sub-label" value="${esc(sub.label)}" data-change="updateSubLabel" data-change-args="[&quot;${item.id}&quot;,&quot;${sub.id}&quot;,&quot;@value&quot;]">
+              <button class="coa-btn" data-act="removeSub" data-act-args="[&quot;${item.id}&quot;,&quot;${sub.id}&quot;]" title="Löschen">×</button>
             </div>
             <div class="coa-accounts" id="chips-${item.id}-${sub.id}">
               ${(sub.accounts||[]).map(a=>`
                 <span class="coa-chip">${a}${APP.accountNames.get(a)?' · '+esc(APP.accountNames.get(a).slice(0,18)):''}
-                  <span class="coa-chip-remove" onclick="removeAccount('${item.id}','${sub.id}',${a})">×</span>
+                  <span class="coa-chip-remove" data-act="removeAccount" data-act-args="[&quot;${item.id}&quot;,&quot;${sub.id}&quot;,${a}]">×</span>
                 </span>`).join('')}
             </div>
             <div class="acct-picker-wrap" id="wrap-${pickerId}">
-              <button class="coa-add-account" onclick="toggleAcctPicker('${item.id}','${sub.id}')">+ Konto hinzufügen</button>
+              <button class="coa-add-account" data-act="toggleAcctPicker" data-act-args="[&quot;${item.id}&quot;,&quot;${sub.id}&quot;]">+ Konto hinzufügen</button>
               <div class="acct-picker-dropdown hidden" id="${pickerId}">
                 <div class="apd-search">
-                  <input type="text" placeholder="Konto suchen (Nr. oder Name)…" oninput="filterAcctPicker('${item.id}','${sub.id}',this.value)" id="apd-input-${item.id}-${sub.id}" autocomplete="off">
+                  <input type="text" placeholder="Konto suchen (Nr. oder Name)…" data-input="filterAcctPicker" data-input-args="[&quot;${item.id}&quot;,&quot;${sub.id}&quot;,&quot;@value&quot;]" id="apd-input-${item.id}-${sub.id}" autocomplete="off">
                 </div>
                 <div class="apd-list" id="apd-list-${item.id}-${sub.id}"></div>
               </div>
@@ -232,7 +232,7 @@ export function filterAcctPicker(itemId, subId, query) {
   if (free.length) {
     html += `<div class="apd-section-hdr">Nicht zugeordnet (${free.length})</div>`;
     for (const { acct, name } of free) {
-      html += `<div class="apd-item" onclick="addAccountToSub('${itemId}','${subId}',${acct})">
+      html += `<div class="apd-item" data-act="addAccountToSub" data-act-args="[&quot;${itemId}&quot;,&quot;${subId}&quot;,${acct}]">
         <span class="apd-item-num">${acct}</span>
         <span class="apd-item-name">${esc(name||'—')}</span>
         <span class="apd-item-badge apd-badge-free">frei</span>
@@ -246,7 +246,7 @@ export function filterAcctPicker(itemId, subId, query) {
         <span class="apd-item-num">${acct}</span>
         <span class="apd-item-name" title="${esc(name)}">${esc((name||'—').slice(0,22))}</span>
         <span class="apd-item-badge apd-badge-mapped" title="${esc(loc)}">${esc(loc.slice(0,20))}</span>
-        <button class="apd-item-unmap show" onclick="unmapAndMove('${itemId}','${subId}',${acct})" title="Umbuchen hierher">↩ hierher</button>
+        <button class="apd-item-unmap show" data-act="unmapAndMove" data-act-args="[&quot;${itemId}&quot;,&quot;${subId}&quot;,${acct}]" title="Umbuchen hierher">↩ hierher</button>
       </div>`;
     }
   }
@@ -257,7 +257,7 @@ export function filterAcctPicker(itemId, subId, query) {
         <span class="apd-item-num">${acct}</span>
         <span class="apd-item-name">${esc(name||'—')}</span>
         <span class="apd-item-badge apd-badge-here">✓ hier</span>
-        <button class="apd-item-unmap show" onclick="removeAccount('${itemId}','${subId}',${acct})" style="color:#dc2626;border-color:#fecaca" title="Entfernen">× entf.</button>
+        <button class="apd-item-unmap show" data-act="removeAccount" data-act-args="[&quot;${itemId}&quot;,&quot;${subId}&quot;,${acct}]" style="color:#dc2626;border-color:#fecaca" title="Entfernen">× entf.</button>
       </div>`;
     }
   }
@@ -470,7 +470,7 @@ export function renderDataStats() {
             <div style="font-size:.8rem;font-weight:600;color:#1e2433;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${f.name}</div>
             <div style="font-size:.7rem;color:#8b95a9">${f.txnCount?.toLocaleString('de-DE')} Buchungen · ${(f.years||[]).join(', ')}</div>
           </div>
-          <button onclick="removeFile('${f.id}')" style="padding:.25rem .6rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0">Entfernen</button>
+          <button data-act="removeFile" data-act-args="[&quot;${f.id}&quot;]" style="padding:.25rem .6rem;background:#fff;color:#dc2626;border:1px solid #fecaca;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit;flex-shrink:0">Entfernen</button>
         </div>`).join('')}
     </div>` : ''}`;
 }
