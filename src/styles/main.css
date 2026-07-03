@@ -1383,13 +1383,26 @@ textarea.plan-input { resize: vertical; }
   box-shadow: 0 1px 3px rgba(79,110,247,.06);
 }
 .avp-kpi-ebitda { border-color: #c7d2fe; background: var(--c-surface-3); }
-.avp-kpi-label  { font-size: .72rem; font-weight: 600; color: var(--c-text-soft); margin-bottom: .25rem; text-transform: uppercase; letter-spacing: .04em; }
-.avp-kpi-val    { font-size: 1.35rem; font-weight: 700; color: var(--c-text); line-height: 1.2; }
-.avp-kpi-plan   { font-size: .72rem; color: var(--c-text-faint); margin-top: .1rem; }
-.avp-kpi-delta  { font-size: .82rem; font-weight: 700; margin-top: .25rem; }
+.avp-kpi-label  { font-size: .68rem; font-weight: 700; color: var(--c-text-soft); margin-bottom: .35rem; text-transform: uppercase; letter-spacing: .04em; }
+.avp-kpi-val    { font-size: 1.4rem; font-weight: 800; color: var(--c-text); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.avp-kpi-empty  { color: var(--c-text-faint); font-weight: 700; }
+.avp-kpi-foot   {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: .6rem; margin-top: .5rem; padding-top: .45rem;
+  border-top: 1px solid var(--c-border-soft);
+}
+.avp-kpi-plan   { font-size: .72rem; color: var(--c-text-faint); font-variant-numeric: tabular-nums; }
+.avp-kpi-delta  { font-size: .78rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .avp-kpi-delta.good { color: var(--c-success); }
 .avp-kpi-delta.bad  { color: var(--c-danger); }
-.avp-kpi-pct    { font-weight: 500; font-size: .75rem; opacity: .8; margin-left: .2rem; }
+.avp-kpi-delta.zero { color: var(--c-text-faint); }
+
+/* Info hint when no actuals exist for the selected year */
+.avp-hint {
+  background: rgba(79,110,247,.06); border: 1px solid rgba(79,110,247,.2);
+  color: var(--c-text-soft); border-radius: 8px;
+  padding: .5rem .85rem; font-size: .78rem; margin-bottom: 1rem;
+}
 
 /* Table scroll container */
 .avp-table-scroll {
@@ -1452,6 +1465,12 @@ textarea.plan-input { resize: vertical; }
 /* Delta colours */
 .avp-delta-pos  { color: var(--c-success); }
 .avp-delta-neg  { color: var(--c-danger); }
+.avp-delta-zero { color: var(--c-text-faint); font-weight: 500; }
+
+/* No actuals yet: the Δ columns are all −100% noise — dim them so the plan
+   values stay the focus instead of a wall of red. */
+.avp-table--noactuals .avp-cell.delta,
+.avp-table--noactuals .avp-pct { color: var(--c-text-faint) !important; font-weight: 500; }
 
 /* EBITDA row */
 .avp-row-ebitda td {
