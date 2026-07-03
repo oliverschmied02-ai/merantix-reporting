@@ -360,9 +360,11 @@ function renderOpexTable(items, entryMap, locked) {
     return `
       <tr class="pg-group-row ${lis.length ? '' : 'pg-group-empty'}" data-group="${esc(g.id)}">
         <td class="pg-pos-cell pg-group-label" colspan="2">
-          <span class="pg-group-name">${esc(g.label)}</span>
-          ${lis.length ? `<span class="pg-group-count">${lis.length}</span>` : ''}
-          ${addBtn}
+          <div class="pg-group-label-inner">
+            <span class="pg-group-name">${esc(g.label)}</span>
+            ${lis.length ? `<span class="pg-group-count">${lis.length}</span>` : ''}
+            ${addBtn}
+          </div>
         </td>
         ${headerCells}
         <td class="pg-total-cell pg-group-total" data-group-total>${groupTotal !== 0 ? fmtCell(groupTotal) : '—'}</td>
@@ -411,6 +413,7 @@ function opexGridRow(li, monthAmounts, locked) {
   const nameEl = locked
     ? `<span class="pg-li-label">${esc(li.label)}</span>`
     : `<span class="pg-li-label editable" contenteditable="true" data-li-id="${li.id}"
+             role="textbox" title="Klicken zum Umbenennen"
              data-blur="planSaveLineName" data-blur-args="[${li.id},&quot;@this&quot;]"
              data-keydown="enterBlur" data-keydown-args="[&quot;@event&quot;,&quot;@this&quot;]">${esc(li.label)}</span>`;
 
