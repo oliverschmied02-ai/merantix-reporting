@@ -8,10 +8,12 @@ export default defineConfig({
     outDir: 'dist',
     rollupOptions: {
       output: {
-        // Single-file output for easy sharing
+        // Content-hashed filenames for cache-busting: after a deploy the URL
+        // changes, so browsers can't serve a stale bundle. index.html is served
+        // with no-cache (see server.js) and always points at the current hash.
         inlineDynamicImports: true,
-        entryFileNames: 'app.js',
-        assetFileNames: 'app.[ext]',
+        entryFileNames: 'assets/app-[hash].js',
+        assetFileNames: 'assets/app-[hash].[ext]',
       },
     },
   },

@@ -23,7 +23,7 @@
  *   Condition: employee must be active (start ≤ bonus month end AND
  *   end ≥ bonus month start) for any portion of bonus_month.
  *   No pro-ration: a partial bonus month still pays the full bonus.
- *   Burden is NOT applied to the bonus (common practice; adjust if needed).
+ *   Employer burden (AG-NK) IS applied to the bonus, same as salary.
  *
  * Open / planned hire  Treated identically to filled roles.
  *   is_filled=false has no effect on amounts — it is a UI/reporting flag only.
@@ -130,15 +130,17 @@ export function spreadPersonnel(driver, planYear) {
     result.push({ month: m, year: planYear, amount: totalCost });
   }
 
-  // Bonus: lump sum in bonus_month if employee is active any part of that month
+  // Bonus: lump sum in bonus_month if employee is active any part of that month.
+  // Employer burden (AG-NK) applies to the bonus too, like salary.
   if (Number(annual_bonus) > 0) {
     const bonusFrac = monthFraction(planYear, bonus_month, start, end);
     if (bonusFrac > 0) {
+      const bonusCost = round2(Number(annual_bonus) * (1 + burden));
       const existing = result.find(e => e.month === bonus_month);
       if (existing) {
-        existing.amount = round2(existing.amount + Number(annual_bonus));
+        existing.amount = round2(existing.amount + bonusCost);
       } else {
-        result.push({ month: bonus_month, year: planYear, amount: Number(annual_bonus) });
+        result.push({ month: bonus_month, year: planYear, amount: bonusCost });
         result.sort((a, b) => a.month - b.month);
       }
     }
@@ -189,16 +191,28 @@ export function splitPersonnel(driver, planYear) {
     if (burden > 0) social.push({ month: m, year: planYear, amount: round2(gross * burden) });
   }
 
-  // Bonus → wages stream, lump sum in bonus_month (no burden)
+  // Bonus → wages stream (lump sum in bonus_month). Employer burden (AG-NK)
+  // applies to the bonus too and goes into the social stream, like salary.
   if (Number(annual_bonus) > 0) {
     const bonusFrac = monthFraction(planYear, bonus_month, start, end);
     if (bonusFrac > 0) {
+      const bonus = Number(annual_bonus);
       const existing = wages.find(e => e.month === bonus_month);
       if (existing) {
-        existing.amount = round2(existing.amount + Number(annual_bonus));
+        existing.amount = round2(existing.amount + bonus);
       } else {
-        wages.push({ month: bonus_month, year: planYear, amount: Number(annual_bonus) });
+        wages.push({ month: bonus_month, year: planYear, amount: bonus });
         wages.sort((a, b) => a.month - b.month);
+      }
+      if (burden > 0) {
+        const bonusSocial = round2(bonus * burden);
+        const existingSoc = social.find(e => e.month === bonus_month);
+        if (existingSoc) {
+          existingSoc.amount = round2(existingSoc.amount + bonusSocial);
+        } else {
+          social.push({ month: bonus_month, year: planYear, amount: bonusSocial });
+          social.sort((a, b) => a.month - b.month);
+        }
       }
     }
   }

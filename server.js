@@ -51,7 +51,17 @@ app.use(helmet({
 }));
 app.use(express.json({ limit: '100mb' }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'dist')));
+app.use(express.static(path.join(__dirname, 'dist'), {
+  setHeaders(res, filePath) {
+    // index.html must always be revalidated so it points at the current
+    // (hashed) bundle; hashed assets are immutable and cached for a year.
+    if (filePath.endsWith('index.html')) {
+      res.setHeader('Cache-Control', 'no-cache');
+    } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    }
+  },
+}));
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
@@ -90,6 +100,7 @@ app.use(allocationRoutes);
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────
 app.get('/{*path}', (req, res) => {
+  res.setHeader('Cache-Control', 'no-cache'); // always revalidate the shell
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
