@@ -224,6 +224,9 @@ export function buildPL() {
     const isAdmin = APP.currentUserRole === 'admin';
     const mapBtn = document.getElementById('unmapped-map-btn');
     if (mapBtn) mapBtn.classList.toggle('hidden', !isAdmin);
+    // Auto-expand for admins so the per-account mapping dropdowns are usable
+    // without an extra click; viewers keep the compact collapsed list.
+    if (isAdmin) ud.setAttribute('open', ''); else ud.removeAttribute('open');
     const sorted = [...allUnmapped].sort((a, b) => a - b);
     if (isAdmin) {
       // Options: every sub-group, grouped by section — build once.
