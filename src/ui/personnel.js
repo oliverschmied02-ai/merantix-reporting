@@ -226,6 +226,7 @@ export async function submitPerson() {
   const salary = parseFloat(salaryRaw);
   const bonus  = parseFloat(bonusRaw)  || 0;
   const nkPct  = parseFloat(nkRaw)     || 0;
+  const bonusMonth = parseInt(document.getElementById('pm-bonus-month')?.value) || 12;
 
   if (!name)                    { errEl.textContent = 'Name erforderlich.'; return; }
   if (isNaN(salary) || salary < 0) { errEl.textContent = 'Jahresgehalt angeben.'; return; }
@@ -240,7 +241,7 @@ export async function submitPerson() {
     start_date:          start,
     end_date:            end,
     is_filled:           true,
-    bonus_month:         12,
+    bonus_month:         bonusMonth,
   };
 
   const btn = document.getElementById('pm-submit');
@@ -269,6 +270,8 @@ export async function generateAllPersonnel() {
 function _resetPersonForm() {
   ['pm-name','pm-role','pm-country','pm-salary','pm-bonus','pm-nk-pct','pm-start','pm-end']
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+  const bm = document.getElementById('pm-bonus-month');
+  if (bm) bm.value = '12';
 }
 
 function _fillPersonForm(d) {
@@ -279,6 +282,8 @@ function _fillPersonForm(d) {
     ? FMT.format(Math.round(Number(d.annual_gross_salary))) : '';
   document.getElementById('pm-bonus').value   = d.annual_bonus
     ? FMT.format(Math.round(Number(d.annual_bonus))) : '';
+  const bm = document.getElementById('pm-bonus-month');
+  if (bm) bm.value = String(d.bonus_month || 12);
   document.getElementById('pm-nk-pct').value  = d.payroll_burden_rate != null
     ? String(Math.round(Number(d.payroll_burden_rate) * 100)) : '';
   document.getElementById('pm-start').value   = d.start_date ? String(d.start_date).slice(0, 10) : '';
