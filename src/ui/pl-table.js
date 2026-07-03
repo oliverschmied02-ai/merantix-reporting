@@ -220,6 +220,9 @@ export function buildPL() {
   const ul = document.getElementById('unmapped-list');
   if (allUnmapped.size > 0) {
     ud.classList.remove('hidden');
+    // Mapping happens in Settings → Kontenplan, which is admin-only.
+    const mapBtn = document.getElementById('unmapped-map-btn');
+    if (mapBtn) mapBtn.classList.toggle('hidden', APP.currentUserRole !== 'admin');
     ul.innerHTML = [...allUnmapped].sort((a, b) => a - b).map(a => {
       const n = APP.accountNames.get(a) || '';
       return `<span class="unmapped-tag" title="${esc(n)}">${a}${n ? ' · ' + esc(n.slice(0, 30)) : ''}</span>`;

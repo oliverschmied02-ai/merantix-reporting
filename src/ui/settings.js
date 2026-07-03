@@ -39,6 +39,15 @@ export function switchSettingsTab(tab) {
   if (tab === 'audit' && window.renderAuditLog) window.renderAuditLog();
 }
 
+// Open Settings → Kontenplan directly (e.g. from the "Konten außerhalb
+// GuV-Mapping" bar in the P&L). `event` is passed when triggered from inside a
+// <summary>, so we suppress the default <details> toggle.
+export function openAccountMapping(event) {
+  if (event) { event.preventDefault(); event.stopPropagation(); }
+  toggleSettings(true);
+  switchSettingsTab('coa');
+}
+
 // Track open account picker
 let _openPickerId = null;
 
