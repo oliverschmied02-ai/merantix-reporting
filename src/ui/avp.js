@@ -280,6 +280,15 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
     }
   }
 
+  // Variance colouring: revenue & EBITDA are "higher is better"; costs are
+  // "lower is better". Used consistently by the KPI cards and the table.
+  const higherIsBetter = key => key === 'revenue' || key === 'ebitda';
+  const varClass = (key, d) =>
+    d === 0 ? 'zero' : higherIsBetter(key) ? (d > 0 ? 'pos' : 'neg') : (d < 0 ? 'pos' : 'neg');
+  // Whether any actuals exist in the range (else the whole Ist side is empty
+  // and every Δ would scream −100% — we dim it and show a hint instead).
+  const hasActuals = Object.values(ytdActual).some(v => Math.round(v) !== 0);
+
   // KPI summary bar (top 4: Revenue, Personnel, OpEx, EBITDA)
   const kpiKeys = ['revenue', 'personnel', 'opex', 'ebitda'];
   const kpiRows = rows.filter(r => kpiKeys.includes(r.key));
@@ -287,21 +296,18 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
   const kpiBar = kpiRows.map(r => {
     const act  = ytdActual[r.key] ?? 0;
     const plan = ytdPlan[r.key]   ?? 0;
-    const delta = act - plan;
-    const pct   = plan !== 0 ? ((delta / Math.abs(plan)) * 100).toFixed(1) : null;
-    const dClass = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'zero';
-    // For cost items, delta > 0 means spending MORE than plan — that's bad
-    const isGood = r.key === 'revenue' || r.key === 'ebitda'
-      ? delta >= 0
-      : delta <= 0;
+    const delta = round2(act - plan);
+    const pct   = plan !== 0 ? Math.round((delta / Math.abs(plan)) * 100) : null;
+    const cls   = !hasActuals ? 'zero'
+      : delta === 0 ? 'zero'
+      : higherIsBetter(r.key) ? (delta > 0 ? 'good' : 'bad') : (delta < 0 ? 'good' : 'bad');
     return `
       <div class="avp-kpi ${r.computed ? 'avp-kpi-ebitda' : ''}">
         <div class="avp-kpi-label">${esc(r.label)}</div>
-        <div class="avp-kpi-val">${fmtActual(act)}</div>
-        <div class="avp-kpi-plan">Plan: ${fmtActual(plan)}</div>
-        <div class="avp-kpi-delta ${isGood ? 'good' : 'bad'}">
-          ${delta >= 0 ? '+' : ''}${fmtActual(delta)}
-          ${pct !== null ? `<span class="avp-kpi-pct">(${pct}%)</span>` : ''}
+        <div class="avp-kpi-val">${act !== 0 ? fmtActual(act) : '<span class="avp-kpi-empty">—</span>'}</div>
+        <div class="avp-kpi-foot">
+          <span class="avp-kpi-plan">Plan ${fmtActual(plan)}</span>
+          <span class="avp-kpi-delta ${cls}">${delta > 0 ? '+' : ''}${fmtActual(delta)}${pct !== null ? ` · ${pct} %` : ''}</span>
         </div>
       </div>`;
   }).join('');
@@ -337,7 +343,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
       const ist    = cell.a;
       const plan   = cell.b;
       const ivp    = round2(ist - plan);
-      const ivpCls = isEbitda ? (ivp >= 0 ? 'pos' : 'neg') : (ivp <= 0 ? 'pos' : 'neg');
+      const ivpCls = varClass(row.key, ivp);
       return `
         <td class="avp-cell ist">${fmtActual(ist)}</td>
         <td class="avp-cell plan">${fmtActual(plan)}</td>
@@ -348,7 +354,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
     const ytdPl  = ytdPlan[row.key]   ?? 0;
     const ytdIvp = round2(ytdAct - ytdPl);
     const ytdPct = ytdPl !== 0 ? ((ytdIvp / Math.abs(ytdPl)) * 100).toFixed(1) : null;
-    const ytdCls = isEbitda ? (ytdIvp >= 0 ? 'pos' : 'neg') : (ytdIvp <= 0 ? 'pos' : 'neg');
+    const ytdCls = varClass(row.key, ytdIvp);
 
     const drillChevron = isDrillable ? `
       <span class="avp-drill-chevron ${isExpanded ? 'expanded' : ''}">
@@ -467,10 +473,12 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
         <span class="avp-meta-note">Δ = Ist − Plan · grün = über Plan (Umsatz) / unter Plan (Kosten)</span>
       </div>
 
+      ${!hasActuals ? `<div class="avp-hint">Für ${yearLabel} sind noch keine Ist-Buchungen erfasst — es werden nur die Planwerte angezeigt.</div>` : ''}
+
       <div class="avp-kpi-bar">${kpiBar}</div>
 
       <div class="avp-table-scroll">
-        <table class="avp-table">
+        <table class="avp-table${hasActuals ? '' : ' avp-table--noactuals'}">
           <thead>
             <tr>
               <th class="avp-label-head" rowspan="2">Position</th>
