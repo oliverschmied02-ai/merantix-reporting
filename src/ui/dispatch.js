@@ -1,3 +1,4 @@
+// @ts-check
 // ── Event delegation ──────────────────────────────────────────────────
 // Replaces inline on*= attributes so a strict Content-Security-Policy (no
 // 'unsafe-inline' for scripts) can be enabled. Elements declare handlers via
@@ -20,18 +21,28 @@ const EVENT_ATTR = {
   focus:   'data-focus',
 };
 
+/**
+ * @param {any} a - literal arg or a sentinel ("@this"/"@event"/"@value")
+ * @param {Element} el
+ * @param {Event} event
+ */
 function resolveArg(a, el, event) {
   if (a === '@this')  return el;
   if (a === '@event') return event;
-  if (a === '@value') return el.value;
+  if (a === '@value') return /** @type {HTMLInputElement} */ (el).value;
   return a;
 }
 
+/**
+ * @param {string} attr - the data attribute naming the handler (e.g. 'data-act')
+ * @param {Event} event
+ */
 function dispatch(attr, event) {
-  const el = event.target.closest(`[${attr}]`);
+  const target = /** @type {Element|null} */ (event.target);
+  const el = target && target.closest(`[${attr}]`);
   if (!el) return;
   const name = el.getAttribute(attr);
-  const fn = window[name];
+  const fn = name && /** @type {any} */ (window)[name];
   if (typeof fn !== 'function') {
     console.warn('[dispatch] no handler for', attr, '=', name);
     return;
@@ -42,7 +53,7 @@ function dispatch(attr, event) {
     try { args = JSON.parse(raw); }
     catch (e) { console.error('[dispatch] invalid args', raw, e); }
   }
-  fn(...args.map(a => resolveArg(a, el, event)));
+  fn(...args.map((/** @type {any} */ a) => resolveArg(a, el, event)));
 }
 
 export function initDispatch() {
@@ -55,25 +66,34 @@ export function initDispatch() {
 
 // ── Attribute builders for use inside template-literal render code ────────
 // Usage:  `<button ${onClick('doLogout')}>`  /  `<select ${onChange('setUserRole', id, '@value')}>`
+/** @param {unknown} s */
 const escAttr = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
+/**
+ * @param {string} attr
+ * @param {string} name
+ * @param {any[]} args
+ * @returns {string}
+ */
 function build(attr, name, args) {
   const base = `${attr}="${name}"`;
   return args.length ? `${base} ${attr}-args="${escAttr(JSON.stringify(args))}"` : base;
 }
 
-export const onClick   = (name, ...a) => build('data-act', name, a);
-export const onChange  = (name, ...a) => build('data-change', name, a);
-export const onInput   = (name, ...a) => build('data-input', name, a);
-export const onKeydown = (name, ...a) => build('data-keydown', name, a);
-export const onBlur    = (name, ...a) => build('data-blur', name, a);
-export const onFocus   = (name, ...a) => build('data-focus', name, a);
+/** @typedef {(name: string, ...a: any[]) => string} AttrBuilder */
+/** @type {AttrBuilder} */ export const onClick   = (name, ...a) => build('data-act', name, a);
+/** @type {AttrBuilder} */ export const onChange  = (name, ...a) => build('data-change', name, a);
+/** @type {AttrBuilder} */ export const onInput   = (name, ...a) => build('data-input', name, a);
+/** @type {AttrBuilder} */ export const onKeydown = (name, ...a) => build('data-keydown', name, a);
+/** @type {AttrBuilder} */ export const onBlur    = (name, ...a) => build('data-blur', name, a);
+/** @type {AttrBuilder} */ export const onFocus   = (name, ...a) => build('data-focus', name, a);
 
 // Small reusable handlers for former inline expressions.
 export function registerBuiltins() {
-  window.clickEl   = id => document.getElementById(id)?.click();
-  window.selectAll = el => el.select?.();
-  window.enterBlur = (event, el) => {
+  const w = /** @type {any} */ (window);
+  w.clickEl   = (/** @type {string} */ id) => document.getElementById(id)?.click();
+  w.selectAll = (/** @type {HTMLInputElement} */ el) => el.select?.();
+  w.enterBlur = (/** @type {KeyboardEvent} */ event, /** @type {HTMLElement} */ el) => {
     if (event.key === 'Enter') { event.preventDefault(); el.blur(); }
   };
 }
