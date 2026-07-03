@@ -220,13 +220,33 @@ export function buildPL() {
   const ul = document.getElementById('unmapped-list');
   if (allUnmapped.size > 0) {
     ud.classList.remove('hidden');
-    // Mapping happens in Settings → Kontenplan, which is admin-only.
+    // Mapping is an admin capability (edits the chart of accounts).
+    const isAdmin = APP.currentUserRole === 'admin';
     const mapBtn = document.getElementById('unmapped-map-btn');
-    if (mapBtn) mapBtn.classList.toggle('hidden', APP.currentUserRole !== 'admin');
-    ul.innerHTML = [...allUnmapped].sort((a, b) => a - b).map(a => {
-      const n = APP.accountNames.get(a) || '';
-      return `<span class="unmapped-tag" title="${esc(n)}">${a}${n ? ' · ' + esc(n.slice(0, 30)) : ''}</span>`;
-    }).join('');
+    if (mapBtn) mapBtn.classList.toggle('hidden', !isAdmin);
+    const sorted = [...allUnmapped].sort((a, b) => a - b);
+    if (isAdmin) {
+      // Options: every sub-group, grouped by section — build once.
+      const opts = APP.plDef
+        .filter(it => it.subs && it.subs.length)
+        .map(it => `<optgroup label="${esc(it.label)}">` +
+          it.subs.map(s => `<option value="${esc(it.id)}::${esc(s.id)}">${esc(s.label)}</option>`).join('') +
+          `</optgroup>`).join('');
+      ul.innerHTML = sorted.map(a => {
+        const n = APP.accountNames.get(a) || '';
+        return `<div class="unmapped-row">
+          <span class="unmapped-tag" title="${esc(n)}">${a}${n ? ' · ' + esc(n.slice(0, 30)) : ''}</span>
+          <select class="unmapped-sel" aria-label="Konto ${a} zuordnen" data-change="mapUnmappedAccount" data-change-args="[${a},&quot;@value&quot;]">
+            <option value="" selected disabled>Gruppe wählen…</option>${opts}
+          </select>
+        </div>`;
+      }).join('');
+    } else {
+      ul.innerHTML = sorted.map(a => {
+        const n = APP.accountNames.get(a) || '';
+        return `<span class="unmapped-tag" title="${esc(n)}">${a}${n ? ' · ' + esc(n.slice(0, 30)) : ''}</span>`;
+      }).join('');
+    }
   } else ud.classList.add('hidden');
   } catch (e) {
     console.error('[buildPL] render threw:', e);

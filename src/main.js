@@ -10,7 +10,7 @@ import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
   closeNewSectionModal, confirmNewSection, updateRatioFormula,
   restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem,
-  openAccountMapping, initOutsidePickerClose } from './ui/settings.js';
+  openAccountMapping, mapUnmappedAccount, initOutsidePickerClose } from './ui/settings.js';
 import { initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection, txnPickerPage,
@@ -52,7 +52,7 @@ Object.assign(window, {
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,
   removeAccount, removeSub, removeItem, selectNsType, addNewSection,
   closeNewSectionModal, confirmNewSection, updateRatioFormula,
-  restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem, openAccountMapping,
+  restoreDefaultPL, exportCoA, importCoADialog, movePlDefItem, openAccountMapping, mapUnmappedAccount,
   initTransactionPicker, updateTransactionPicker, toggleTransactionSelection,
   toggleSelectAllTransactions, updateTransactionSelectionPanel,
   applyBulkReclassification, clearTransactionSelection, txnPickerPage,

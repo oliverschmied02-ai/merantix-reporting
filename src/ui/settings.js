@@ -48,6 +48,21 @@ export function openAccountMapping(event) {
   switchSettingsTab('coa');
 }
 
+// Assign a single unmapped account to a P&L sub-group directly from the
+// warning bar. `value` is "<itemId>::<subId>". saveCoA() persists, rebuilds
+// the account map and re-renders the P&L, so the account leaves the bar.
+export function mapUnmappedAccount(acct, value) {
+  const [itemId, subId] = String(value || '').split('::');
+  if (!itemId || !subId) return;
+  const item = APP.plDef.find(i => i.id === itemId);
+  const sub  = item?.subs?.find(s => s.id === subId);
+  if (!sub) return;
+  const n = Number(acct);
+  if (!sub.accounts.includes(n)) { sub.accounts.push(n); sub.accounts.sort((a, b) => a - b); }
+  saveCoA();
+  showToast(`Konto ${acct} → ${sub.label}`, 'success');
+}
+
 // Track open account picker
 let _openPickerId = null;
 
