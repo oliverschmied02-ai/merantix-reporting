@@ -373,6 +373,8 @@ export async function changeYear() {
   if (!year) { buildPL(); return; }
   if (!APP.loadedYears.has(year)) {
     if (sel) sel.disabled = true;
+    const wrap = document.querySelector('#pl-screen .pl-wrap');
+    wrap?.classList.add('loading');
     try {
       const data = await loadTransactionsForYear(year);
       APP.allTransactions = APP.allTransactions.filter(t => t.wjYear !== year);
@@ -382,6 +384,7 @@ export async function changeYear() {
       showToast('Fehler beim Laden des Jahres ' + year + ': ' + e.message);
     } finally {
       if (sel) sel.disabled = false;
+      wrap?.classList.remove('loading');
     }
   }
   buildPL();

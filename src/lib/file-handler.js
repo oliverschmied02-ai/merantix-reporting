@@ -2,7 +2,7 @@ import JSZip from 'jszip';
 import { APP, resetAPP } from '../state.js';
 import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './parser.js';
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
-import { confirmDialog } from '../ui/dialog.js';
+import { confirmDialog, alertDialog } from '../ui/dialog.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
 import { saveFileToServer, deleteFileFromServer, clearFromServer, checkContentHash } from './db.js';
@@ -163,7 +163,8 @@ export async function handleFile(file) {
     requestAnimationFrame(() => import('../ui/screen.js').then(m => m.updateAboveTableHeight()));
   } catch (e) {
     console.error(e);
-    showToast('Fehler: ' + e.message);
+    // Import/persistence failure is critical — use a modal the user must acknowledge.
+    alertDialog('Import fehlgeschlagen: ' + e.message);
     if (APP.loadedFiles.length === 0) setScreen('upload-screen');
     else setScreen('pl-screen');
   }

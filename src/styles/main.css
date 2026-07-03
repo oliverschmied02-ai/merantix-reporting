@@ -173,6 +173,18 @@ select.ctrl:focus { outline: none; border-color: var(--c-primary); box-shadow: 0
   padding: 0 1.5rem 1.5rem;
   height: calc(100vh - var(--above-table-h, 200px));
 }
+/* Loading overlay while a fiscal year is lazy-loaded */
+.pl-wrap.loading { position: relative; }
+.pl-wrap.loading::before {
+  content: ''; position: absolute; inset: 0; z-index: 5; background: rgba(255,255,255,.6);
+}
+.pl-wrap.loading::after {
+  content: ''; position: absolute; top: 30%; left: 50%; width: 30px; height: 30px;
+  margin: -15px 0 0 -15px; z-index: 6; border-radius: 50%;
+  border: 3px solid var(--c-border); border-top-color: var(--c-primary);
+  animation: pl-spin .7s linear infinite;
+}
+@keyframes pl-spin { to { transform: rotate(360deg); } }
 
 /* ── P&L Table ── */
 .pl-table { border-collapse: separate; border-spacing: 0; min-width: 700px; width: 100%; }
