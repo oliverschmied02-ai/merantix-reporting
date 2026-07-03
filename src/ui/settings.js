@@ -5,6 +5,7 @@ import { DEFAULT_PL_DEF } from '../data/default-pl.js';
 import { saveCoA, saveRules } from '../lib/storage.js';
 import { isInGUV } from '../lib/compute.js';
 import { showToast } from './screen.js';
+import { confirmDialog } from './dialog.js';
 import { initTransactionPicker } from './rules.js';
 import { renderRulesList } from './rules.js';
 
@@ -342,26 +343,26 @@ export function removeAccount(itemId, subId, acct) {
   saveCoA();
 }
 
-export function removeSub(itemId, subId) {
+export async function removeSub(itemId, subId) {
   const item = APP.plDef.find(i => i.id === itemId);
   if (!item) return;
   const sub = item.subs?.find(s => s.id === subId);
   const label = sub ? `"${sub.label}"` : 'diese Unterkategorie';
   const orphanCount = APP.rules.filter(r => r.targetItemId === itemId && r.targetSubId === subId).length;
   const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
-  if (!confirm(`${label} löschen?${warning}`)) return;
+  if (!await confirmDialog(`${label} löschen?${warning}`, { danger: true, okLabel: 'Löschen' })) return;
   item.subs = item.subs.filter(s => s.id !== subId);
   APP.rules = APP.rules.filter(r => !(r.targetItemId === itemId && r.targetSubId === subId));
   saveCoA();
   saveRules();
 }
 
-export function removeItem(itemId) {
+export async function removeItem(itemId) {
   const item = APP.plDef.find(i => i.id === itemId);
   if (!item) return;
   const orphanCount = APP.rules.filter(r => r.targetItemId === itemId).length;
   const warning = orphanCount ? `\n\n${orphanCount} Buchungsregel(n) werden ebenfalls gelöscht.` : '';
-  if (!confirm(`"${item.label}" löschen?${warning}`)) return;
+  if (!await confirmDialog(`"${item.label}" löschen?${warning}`, { danger: true, okLabel: 'Löschen' })) return;
   APP.plDef = APP.plDef.filter(i => i.id !== itemId);
   APP.rules = APP.rules.filter(r => r.targetItemId !== itemId);
   saveCoA();
@@ -426,8 +427,8 @@ export function updateRatioFormula(itemId, field, value) {
   saveCoA();
 }
 
-export function restoreDefaultPL() {
-  if (confirm('Standard-Kontenplan wiederherstellen?')) {
+export async function restoreDefaultPL() {
+  if (await confirmDialog('Standard-Kontenplan wiederherstellen?', { okLabel: 'Wiederherstellen' })) {
     APP.plDef = deepClone(DEFAULT_PL_DEF);
     saveCoA();
   }

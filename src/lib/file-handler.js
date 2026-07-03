@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import { APP, resetAPP } from '../state.js';
 import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './parser.js';
 import { showToast, setScreen, setLoading } from '../ui/screen.js';
+import { confirmDialog } from '../ui/dialog.js';
 import { buildPL } from '../ui/pl-table.js';
 import { renderFilesScreen } from '../ui/files.js';
 import { saveFileToServer, deleteFileFromServer, clearFromServer, checkContentHash } from './db.js';
@@ -91,8 +92,9 @@ export async function handleFile(file) {
     // Check for duplicate before parsing
     const dupCheck = await checkContentHash(contentHash).catch(() => ({ duplicate: false }));
     if (dupCheck.duplicate) {
-      const proceed = confirm(
-        `Diese Datei wurde bereits hochgeladen ("${dupCheck.file.name}").\n\nTrotzdem erneut importieren?`
+      const proceed = await confirmDialog(
+        `Diese Datei wurde bereits hochgeladen ("${dupCheck.file.name}").\n\nTrotzdem erneut importieren?`,
+        { okLabel: 'Importieren' }
       );
       if (!proceed) { if (APP.loadedFiles.length === 0) setScreen('upload-screen'); else setScreen('pl-screen'); return; }
     }

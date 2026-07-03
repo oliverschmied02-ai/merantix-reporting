@@ -34,6 +34,7 @@ import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersio
 import { esc } from './lib/utils.js';
 import { rebuildAcctMap } from './lib/resolve.js';
 import { initDispatch, registerBuiltins } from './ui/dispatch.js';
+import { confirmDialog, alertDialog } from './ui/dialog.js';
 
 // ── Navigation wrapper — triggers screen-specific data loads ─────────
 function setMainView(name) {
@@ -228,12 +229,12 @@ async function confirmResetPw() {
 window.confirmResetPw = confirmResetPw;
 
 async function removeUser(id) {
-  if (!confirm('Benutzer löschen?')) return;
+  if (!await confirmDialog('Benutzer löschen?', { danger: true, okLabel: 'Löschen' })) return;
   try {
     await deleteUser(id);
     renderUsersList();
   } catch (e) {
-    alert(e.message);
+    alertDialog(e.message);
   }
 }
 window.removeUser = removeUser;
@@ -334,7 +335,7 @@ async function approveAccessRequest(id) {
 window.approveAccessRequest = approveAccessRequest;
 
 async function rejectAccessRequest(id) {
-  if (!confirm('Anfrage ablehnen und löschen?')) return;
+  if (!await confirmDialog('Anfrage ablehnen und löschen?', { danger: true, okLabel: 'Ablehnen' })) return;
   try {
     await rejectRequest(id);
     renderRequestsList();

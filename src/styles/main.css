@@ -295,6 +295,29 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
   padding: .1rem .45rem; font-size: .7rem; color: var(--c-text-muted); font-family: monospace;
 }
 
+/* ── App dialog (confirm/alert) ── */
+.app-dialog-overlay {
+  position: fixed; inset: 0; z-index: 600;
+  background: rgba(15,20,35,.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.app-dialog-box {
+  background: #fff; border-radius: 14px; padding: 1.4rem 1.5rem;
+  max-width: 400px; width: calc(100% - 3rem);
+  box-shadow: 0 20px 60px rgba(0,0,0,.25);
+}
+.app-dialog-msg { font-size: .9rem; color: var(--c-text); line-height: 1.5; white-space: pre-wrap; }
+.app-dialog-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-top: 1.3rem; }
+.app-dialog-btn {
+  padding: .5rem 1.1rem; border-radius: 8px; font-size: .82rem; font-weight: 600;
+  font-family: inherit; cursor: pointer; border: 1px solid var(--c-border-2);
+}
+.app-dialog-cancel { background: #fff; color: var(--c-text-soft); }
+.app-dialog-cancel:hover { background: var(--c-surface-2); }
+.app-dialog-ok { background: var(--c-primary); color: #fff; border-color: var(--c-primary); }
+.app-dialog-ok:hover { filter: brightness(.95); }
+.app-dialog-ok.app-dialog-danger { background: var(--c-danger); border-color: var(--c-danger); }
+
 /* ── Drill Panel ── */
 #drill-panel {
   position: fixed; right: -600px; top: 0; bottom: 0; width: 580px;
