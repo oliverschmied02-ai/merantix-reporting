@@ -22,7 +22,7 @@ export function renderFilesScreen() {
           ${f.companyName ? `<span class="file-tag">${esc(f.companyName)}</span>` : ''}
         </div>
       </div>
-      <button class="file-card-remove" onclick="removeFile('${f.id}')">✕ Entfernen</button>
+      <button class="file-card-remove" data-act="removeFile" data-act-args="[&quot;${f.id}&quot;]">✕ Entfernen</button>
     </div>
   `).join('');
 }

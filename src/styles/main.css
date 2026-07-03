@@ -443,7 +443,12 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
   z-index: 999; max-width: 450px; text-align: center;
   box-shadow: 0 8px 32px rgba(0,0,0,.2);
 }
-#toast.error { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+#toast.error   { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
+#toast.success { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+
+/* transaction picker rows (was inline onmouseover/onmouseout) */
+.txn-row { border-bottom: 1px solid #f0f2f8; }
+.txn-row:hover { background: #f8f9fd; }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

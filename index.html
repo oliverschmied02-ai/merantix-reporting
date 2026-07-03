@@ -4,8 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>GDPdU P&amp;L Analyzer</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <!-- PapaParse and JSZip are now bundled via npm/Vite (imported in src/lib) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -21,12 +20,12 @@
         <div class="modal-field">
           <label class="modal-label">Typ</label>
           <div class="modal-type-grid">
-            <div class="modal-type-card selected" id="ns-type-section" onclick="selectNsType('section')">
+            <div class="modal-type-card selected" id="ns-type-section" data-act="selectNsType" data-act-args="[&quot;section&quot;]">
               <div class="tc-icon">📂</div>
               <div class="tc-label">Kontengruppe</div>
               <div class="tc-desc">Konten zuordnen &amp; summieren</div>
             </div>
-            <div class="modal-type-card" id="ns-type-ratio" onclick="selectNsType('ratio')">
+            <div class="modal-type-card" id="ns-type-ratio" data-act="selectNsType" data-act-args="[&quot;ratio&quot;]">
               <div class="tc-icon">📐</div>
               <div class="tc-label">Kennzahl (Ratio)</div>
               <div class="tc-desc">Zwei Werte dividieren</div>
@@ -49,8 +48,8 @@
           </div>
         </div>
         <div class="modal-actions">
-          <button class="modal-btn modal-btn-cancel" onclick="closeNewSectionModal()">Abbrechen</button>
-          <button class="modal-btn modal-btn-ok" onclick="confirmNewSection()">Erstellen</button>
+          <button class="modal-btn modal-btn-cancel" data-act="closeNewSectionModal">Abbrechen</button>
+          <button class="modal-btn modal-btn-ok" data-act="confirmNewSection">Erstellen</button>
         </div>
       </div>
     </div>
@@ -69,11 +68,11 @@
         <label class="login-label">Passwort</label>
         <div style="position:relative">
           <input class="login-input" id="login-password" type="password" placeholder="••••••••" autocomplete="current-password" style="padding-right:2.5rem" />
-          <button type="button" onclick="toggleLoginPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
+          <button type="button" data-act="toggleLoginPw" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
         </div>
-        <button class="login-btn" id="login-btn" onclick="doLogin()">Anmelden</button>
+        <button class="login-btn" id="login-btn" data-act="doLogin">Anmelden</button>
         <div style="text-align:center;margin-top:1rem">
-          <button onclick="openRequestAccess()" style="background:none;border:none;color:#4f6ef7;font-size:.78rem;cursor:pointer;font-family:inherit;text-decoration:underline">Zugang anfordern</button>
+          <button data-act="openRequestAccess" style="background:none;border:none;color:#4f6ef7;font-size:.78rem;cursor:pointer;font-family:inherit;text-decoration:underline">Zugang anfordern</button>
         </div>
       </div>
     </div>
@@ -83,7 +82,7 @@
       <div class="login-card" style="max-width:380px;margin:0 auto">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
           <div class="login-title" style="margin:0">Passwort ändern</div>
-          <button onclick="closeChangePassword()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+          <button data-act="closeChangePassword" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
         </div>
         <div class="login-error hidden" id="cp-error"></div>
         <label class="login-label">Neues Passwort</label>
@@ -91,7 +90,7 @@
         <label class="login-label">Bestätigen</label>
         <input class="login-input" id="cp-confirm" type="password" placeholder="••••••••" style="margin-bottom:.75rem" />
         <input id="cp-old" type="hidden" />
-        <button id="cp-btn" onclick="submitChangePassword()" class="login-btn">Speichern</button>
+        <button id="cp-btn" data-act="submitChangePassword" class="login-btn">Speichern</button>
       </div>
     </div>
 
@@ -100,7 +99,7 @@
       <div class="login-card" style="max-width:420px;margin:0 auto">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
           <div class="login-title" style="margin:0">Zugang anfordern</div>
-          <button onclick="closeRequestAccess()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+          <button data-act="closeRequestAccess" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
         </div>
         <div style="font-size:.78rem;color:#8b95a9;margin-bottom:1rem">Ihr Administrator wird benachrichtigt und kann Ihren Zugang freischalten.</div>
         <div class="login-error hidden" id="req-error"></div>
@@ -113,7 +112,7 @@
         <input class="login-input" id="req-email" type="email" placeholder="name@merantix.com" style="margin-bottom:.5rem" />
         <label class="login-label">Nachricht (optional)</label>
         <textarea class="login-input" id="req-message" rows="2" placeholder="Kurze Beschreibung…" style="resize:none;margin-bottom:.75rem"></textarea>
-        <button id="req-btn" onclick="submitAccessRequest()" class="login-btn">Anfrage senden</button>
+        <button id="req-btn" data-act="submitAccessRequest" class="login-btn">Anfrage senden</button>
       </div>
     </div>
 
@@ -153,37 +152,37 @@
             <span class="app-logo-badge" style="font-size:.8rem;padding:.15rem .45rem">P&amp;L</span>
             <span class="sb-logo-text">Analyzer</span>
           </div>
-          <button class="sb-collapse-btn" onclick="toggleSidebar()" title="Sidebar ein-/ausklappen">◀</button>
+          <button class="sb-collapse-btn" data-act="toggleSidebar" title="Sidebar ein-/ausklappen">◀</button>
         </div>
         <div class="sb-nav">
-          <button class="sb-nav-item active" id="nav-pl" onclick="setMainView('pl-screen')">
+          <button class="sb-nav-item active" id="nav-pl" data-act="setMainView" data-act-args="[&quot;pl-screen&quot;]">
             <span class="sb-nav-icon">📊</span>
             <span class="sb-nav-label">P&amp;L Statement</span>
           </button>
-          <button class="sb-nav-item" id="nav-plan" onclick="setMainView('plan-screen')">
+          <button class="sb-nav-item" id="nav-plan" data-act="setMainView" data-act-args="[&quot;plan-screen&quot;]">
             <span class="sb-nav-icon">📋</span>
             <span class="sb-nav-label">Planung</span>
           </button>
-          <button class="sb-nav-item" id="nav-avp" onclick="setMainView('avp-screen')">
+          <button class="sb-nav-item" id="nav-avp" data-act="setMainView" data-act-args="[&quot;avp-screen&quot;]">
             <span class="sb-nav-icon">⚡</span>
             <span class="sb-nav-label">Ist vs. Plan</span>
           </button>
-          <button class="sb-nav-item" id="nav-files" onclick="setMainView('files-screen')">
+          <button class="sb-nav-item" id="nav-files" data-act="setMainView" data-act-args="[&quot;files-screen&quot;]">
             <span class="sb-nav-icon">🗂</span>
             <span class="sb-nav-label">Dateien</span>
             <span class="sb-nav-badge" id="sb-files-badge">0</span>
           </button>
         </div>
         <div class="sb-footer">
-          <button class="sb-nav-item" onclick="toggleSettings()">
+          <button class="sb-nav-item" data-act="toggleSettings">
             <span class="sb-nav-icon">⚙️</span>
             <span class="sb-nav-label">Einstellungen</span>
           </button>
-          <button class="sb-nav-item hidden" id="sb-change-pw" onclick="openChangePassword()">
+          <button class="sb-nav-item hidden" id="sb-change-pw" data-act="openChangePassword">
             <span class="sb-nav-icon">🔑</span>
             <span class="sb-nav-label">Passwort ändern</span>
           </button>
-          <button class="sb-nav-item" onclick="doLogout()" style="color:#dc2626">
+          <button class="sb-nav-item" data-act="doLogout" style="color:#dc2626">
             <span class="sb-nav-icon">→</span>
             <span class="sb-nav-label">Abmelden</span>
           </button>
@@ -202,21 +201,21 @@
             </div>
             <div class="top-sep"></div>
             <div class="seg-ctrl" id="view-seg">
-              <button class="seg-btn active" data-mode="monat" onclick="setViewMode('monat')">Monat</button>
-              <button class="seg-btn" data-mode="quartal" onclick="setViewMode('quartal')">Quartal</button>
+              <button class="seg-btn active" data-mode="monat" data-act="setViewMode" data-act-args="[&quot;monat&quot;]">Monat</button>
+              <button class="seg-btn" data-mode="quartal" data-act="setViewMode" data-act-args="[&quot;quartal&quot;]">Quartal</button>
             </div>
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
-            <select class="ctrl" id="year-sel" onchange="changeYear()"></select>
-            <button class="btn-export" onclick="exportPLCSV()" title="P&amp;L als CSV exportieren">
+            <select class="ctrl" id="year-sel" data-change="changeYear"></select>
+            <button class="btn-export" data-act="exportPLCSV" title="P&amp;L als CSV exportieren">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               CSV
             </button>
-            <button class="btn-export" onclick="exportPLPrint()" title="P&amp;L als PDF exportieren">
+            <button class="btn-export" data-act="exportPLPrint" title="P&amp;L als PDF exportieren">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               PDF
             </button>
-            <button class="btn-settings" onclick="toggleSettings()" title="Einstellungen">⚙️</button>
+            <button class="btn-settings" data-act="toggleSettings" title="Einstellungen">⚙️</button>
           </div>
 
           <div style="padding: 1rem 1.5rem 0.5rem" id="kpi-bar"></div>
@@ -244,14 +243,14 @@
           </div>
           <div class="files-list" id="files-list"></div>
           <div class="files-drop-zone" id="drop-zone-extra"
-               ondrop="handleDrop(event,'extra')"
-               ondragover="event.preventDefault();this.classList.add('drag-over')"
-               ondragleave="this.classList.remove('drag-over')"
-               onclick="document.getElementById('file-input-extra').click()">
+              
+              
+              
+               data-act="clickEl" data-act-args="[&quot;file-input-extra&quot;]">
             <div class="files-drop-zone-icon">➕</div>
             <div class="files-drop-zone-title">Weitere GDPdU-Datei hinzufügen</div>
             <div class="files-drop-zone-sub">Drag &amp; Drop oder klicken</div>
-            <input type="file" id="file-input-extra" accept=".zip" style="display:none" onchange="handleFileInput(this)" />
+            <input type="file" id="file-input-extra" accept=".zip" style="display:none" data-change="handleFileInput" data-change-args="[&quot;@this&quot;]" />
           </div>
         </div><!-- /files-screen -->
 
@@ -266,8 +265,8 @@
                 <div class="top-company">Planversionen &amp; Budget</div>
               </div>
               <div style="margin-left:auto;display:flex;gap:.5rem">
-                <button class="btn-sm" onclick="openCompareScreen()">⇄ Vergleichen</button>
-                <button class="btn-plan-primary" onclick="openCreateVersion()">+ Neue Version</button>
+                <button class="btn-sm" data-act="openCompareScreen">⇄ Vergleichen</button>
+                <button class="btn-plan-primary" data-act="openCreateVersion">+ Neue Version</button>
               </div>
             </div>
             <div style="padding:1.5rem" id="plan-versions-list">
@@ -278,16 +277,16 @@
           <!-- Scenario comparison view -->
           <div id="plan-compare-view" style="display:none;flex-direction:column;flex:1;min-height:0">
             <div class="top-bar">
-              <button class="plan-back-btn" onclick="planBackToList()">← Versionen</button>
+              <button class="plan-back-btn" data-act="planBackToList">← Versionen</button>
               <div style="margin-left:.75rem">
                 <div class="top-title">Szenariovergleich</div>
                 <div class="top-company">Zwei Planversionen gegenüberstellen</div>
               </div>
               <div class="top-sep"></div>
               <span class="lbl">Version A</span>
-              <select id="cmp-sel-a" class="ctrl" onchange="runComparison()" style="min-width:200px"></select>
+              <select id="cmp-sel-a" class="ctrl" data-change="runComparison" style="min-width:200px"></select>
               <span class="lbl" style="padding:0 .25rem">vs.</span>
-              <select id="cmp-sel-b" class="ctrl" onchange="runComparison()" style="min-width:200px"></select>
+              <select id="cmp-sel-b" class="ctrl" data-change="runComparison" style="min-width:200px"></select>
             </div>
             <div class="plan-grid-container" id="plan-compare-content">
               <div class="plan-empty">Wähle zwei Versionen zum Vergleich.</div>
@@ -310,7 +309,7 @@
           <div class="plan-modal">
             <div class="plan-modal-header">
               <div class="plan-modal-title">Neue Planversion</div>
-              <button class="drill-close" onclick="closeCreateVersion()">✕</button>
+              <button class="drill-close" data-act="closeCreateVersion">✕</button>
             </div>
             <div class="plan-modal-body">
               <div class="plan-field">
@@ -338,8 +337,8 @@
               <div id="pcm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
             </div>
             <div class="plan-modal-footer">
-              <button class="btn-sm" onclick="closeCreateVersion()">Abbrechen</button>
-              <button class="btn-plan-primary" id="pcm-submit" onclick="submitCreateVersion()">Erstellen</button>
+              <button class="btn-sm" data-act="closeCreateVersion">Abbrechen</button>
+              <button class="btn-plan-primary" id="pcm-submit" data-act="submitCreateVersion">Erstellen</button>
             </div>
           </div>
         </div>
@@ -349,7 +348,7 @@
           <div class="plan-modal" style="min-width:440px">
             <div class="plan-modal-header">
               <div class="plan-modal-title">Position hinzufügen — <span id="plm-tab-label" style="color:#4f6ef7"></span></div>
-              <button class="drill-close" onclick="closeLineItemModalAndCleanup()">✕</button>
+              <button class="drill-close" data-act="closeLineItemModalAndCleanup">✕</button>
             </div>
             <div class="plan-modal-body">
               <div class="plan-field">
@@ -359,7 +358,7 @@
               <div id="plm-category-row" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
                 <div class="plan-field">
                   <label class="plan-label">Kategorie</label>
-                  <select id="plm-category" class="plan-input ctrl" onchange="plmCategoryChanged()">
+                  <select id="plm-category" class="plan-input ctrl" data-change="plmCategoryChanged">
                     <option value="revenue">Umsatz</option>
                     <option value="opex" selected>OpEx</option>
                     <option value="depreciation">Abschreibungen</option>
@@ -375,19 +374,19 @@
               <div id="plm-driver-section" style="display:none;margin-top:.25rem;padding:.75rem;background:#f4f6fb;border-radius:8px;border:1px solid #e4e9f5">
                 <div style="font-size:.72rem;font-weight:700;color:#6b7a99;text-transform:uppercase;letter-spacing:.04em;margin-bottom:.6rem">Einnahmentyp</div>
                 <div class="seg-ctrl" style="margin-bottom:.75rem">
-                  <button class="seg-btn active" id="plm-drv-mgmt-btn" onclick="plmDriverMode('management_fee')">Management Fee</button>
-                  <button class="seg-btn" id="plm-drv-oneoff-btn" onclick="plmDriverMode('one_off')">Einmalzahlung</button>
-                  <button class="seg-btn" id="plm-drv-manual-btn" onclick="plmDriverMode('manual')">Manuell eingeben</button>
+                  <button class="seg-btn active" id="plm-drv-mgmt-btn" data-act="plmDriverMode" data-act-args="[&quot;management_fee&quot;]">Management Fee</button>
+                  <button class="seg-btn" id="plm-drv-oneoff-btn" data-act="plmDriverMode" data-act-args="[&quot;one_off&quot;]">Einmalzahlung</button>
+                  <button class="seg-btn" id="plm-drv-manual-btn" data-act="plmDriverMode" data-act-args="[&quot;manual&quot;]">Manuell eingeben</button>
                 </div>
                 <!-- management_fee fields -->
                 <div id="plm-mgmt-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
                   <div class="plan-field">
                     <label class="plan-label">Commitment (€)</label>
-                    <input id="plm-commitment" class="plan-input" type="number" min="0" step="1000000" placeholder="100.000.000" oninput="plmUpdatePreview()"/>
+                    <input id="plm-commitment" class="plan-input" type="number" min="0" step="1000000" placeholder="100.000.000" data-input="plmUpdatePreview"/>
                   </div>
                   <div class="plan-field">
                     <label class="plan-label">Management Fee %</label>
-                    <input id="plm-fee-pct" class="plan-input" type="number" min="0" max="10" step="0.01" placeholder="2.0" oninput="plmUpdatePreview()"/>
+                    <input id="plm-fee-pct" class="plan-input" type="number" min="0" max="10" step="0.01" placeholder="2.0" data-input="plmUpdatePreview"/>
                   </div>
                 </div>
                 <!-- one_off fields -->
@@ -418,8 +417,8 @@
               <div id="plm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
             </div>
             <div class="plan-modal-footer">
-              <button class="btn-sm" onclick="closeLineItemModalAndCleanup()">Abbrechen</button>
-              <button class="btn-plan-primary" id="plm-submit" onclick="submitAddLineItem()">Hinzufügen</button>
+              <button class="btn-sm" data-act="closeLineItemModalAndCleanup">Abbrechen</button>
+              <button class="btn-plan-primary" id="plm-submit" data-act="submitAddLineItem">Hinzufügen</button>
             </div>
           </div>
         </div>
@@ -429,12 +428,12 @@
           <div class="plan-modal" style="min-width:420px">
             <div class="plan-modal-header">
               <div class="plan-modal-title" id="pdm-title">Revenue Driver</div>
-              <button class="drill-close" onclick="closeDriverModal()">✕</button>
+              <button class="drill-close" data-act="closeDriverModal">✕</button>
             </div>
             <div class="plan-modal-body">
               <div class="plan-field">
                 <label class="plan-label">Typ</label>
-                <select id="pdm-type" class="plan-input ctrl" onchange="driverTypeChanged()">
+                <select id="pdm-type" class="plan-input ctrl" data-change="driverTypeChanged">
                   <option value="management_fee">Management Fee (Commitment × %)</option>
                   <option value="annual_fee">Jahresbetrag (gleichmäßig verteilt)</option>
                   <option value="monthly_flat">Monatlicher Fixbetrag</option>
@@ -445,11 +444,11 @@
               <div id="pdm-mgmt-fields" style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
                 <div class="plan-field">
                   <label class="plan-label">Commitment (€)</label>
-                  <input id="pdm-commitment" class="plan-input" type="number" min="0" step="1000000" placeholder="100000000" oninput="driverPreviewUpdate()"/>
+                  <input id="pdm-commitment" class="plan-input" type="number" min="0" step="1000000" placeholder="100000000" data-input="driverPreviewUpdate"/>
                 </div>
                 <div class="plan-field">
                   <label class="plan-label">Management Fee %</label>
-                  <input id="pdm-fee-pct" class="plan-input" type="number" min="0" max="10" step="0.01" placeholder="2.0" oninput="driverPreviewUpdate()"/>
+                  <input id="pdm-fee-pct" class="plan-input" type="number" min="0" max="10" step="0.01" placeholder="2.0" data-input="driverPreviewUpdate"/>
                 </div>
               </div>
               <!-- amount input (all other types) -->
@@ -476,8 +475,8 @@
               <div id="pdm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
             </div>
             <div class="plan-modal-footer">
-              <button class="btn-sm" onclick="closeDriverModal()">Abbrechen</button>
-              <button class="btn-plan-primary" id="pdm-submit" onclick="submitDriver()">Speichern</button>
+              <button class="btn-sm" data-act="closeDriverModal">Abbrechen</button>
+              <button class="btn-plan-primary" id="pdm-submit" data-act="submitDriver">Speichern</button>
             </div>
           </div>
         </div>
@@ -487,7 +486,7 @@
           <div class="plan-modal" style="min-width:460px">
             <div class="plan-modal-header">
               <div class="plan-modal-title" id="pm-title">Person hinzufügen</div>
-              <button class="drill-close" onclick="closePersonModal()">✕</button>
+              <button class="drill-close" data-act="closePersonModal">✕</button>
             </div>
             <div class="plan-modal-body">
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:.75rem">
@@ -530,8 +529,8 @@
               <div id="pm-error" style="color:#dc2626;font-size:.75rem;margin-top:.25rem"></div>
             </div>
             <div class="plan-modal-footer">
-              <button class="btn-sm" onclick="closePersonModal()">Abbrechen</button>
-              <button class="btn-plan-primary" id="pm-submit" onclick="submitPerson()">Hinzufügen</button>
+              <button class="btn-sm" data-act="closePersonModal">Abbrechen</button>
+              <button class="btn-plan-primary" id="pm-submit" data-act="submitPerson">Hinzufügen</button>
             </div>
           </div>
         </div>
@@ -545,13 +544,13 @@
             </div>
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
-            <select id="avp-year-sel" class="ctrl" onchange="avpChangeYear()"></select>
+            <select id="avp-year-sel" class="ctrl" data-change="avpChangeYear"></select>
             <span class="lbl">Planversion</span>
-            <select id="avp-version-sel" class="ctrl" style="min-width:200px" onchange="avpChangeVersion()"></select>
+            <select id="avp-version-sel" class="ctrl" style="min-width:200px" data-change="avpChangeVersion"></select>
             <span class="lbl">von</span>
-            <select id="avp-month-from-sel" class="ctrl" onchange="avpChangeMonthFrom()"></select>
+            <select id="avp-month-from-sel" class="ctrl" data-change="avpChangeMonthFrom"></select>
             <span class="lbl">bis</span>
-            <select id="avp-month-to-sel" class="ctrl" onchange="avpChangeMonthTo()"></select>
+            <select id="avp-month-to-sel" class="ctrl" data-change="avpChangeMonthTo"></select>
           </div>
           <div class="plan-grid-container" id="avp-content">
             <div class="plan-empty">Bitte Jahr und Planversion auswählen.</div>
@@ -570,11 +569,11 @@
           <div class="drill-period" id="drill-period"></div>
           <div class="drill-sub" id="drill-sub"></div>
         </div>
-        <button class="drill-close" onclick="closeDrill()">✕</button>
+        <button class="drill-close" data-act="closeDrill">✕</button>
       </div>
       <div class="drill-stats" id="drill-stats"></div>
       <div class="drill-search">
-        <input type="text" id="drill-search" placeholder="Suchen (Text, Beleg, Konto…)" oninput="renderDrillTable()" />
+        <input type="text" id="drill-search" placeholder="Suchen (Text, Beleg, Konto…)" data-input="renderDrillTable" />
       </div>
       <div class="drill-table-wrap">
         <table class="drill-table">
@@ -599,28 +598,28 @@
             <span style="font-weight:700;font-size:.88rem;color:#1e2433">Einstellungen</span>
           </div>
           <nav class="sm-nav">
-            <button class="sm-tab active" data-tab="users" onclick="switchSettingsTab('users')">
+            <button class="sm-tab active" data-tab="users" data-act="switchSettingsTab" data-act-args="[&quot;users&quot;]">
               <span class="sm-tab-icon">👥</span> Benutzer
             </button>
-            <button class="sm-tab" data-tab="requests" onclick="switchSettingsTab('requests')">
+            <button class="sm-tab" data-tab="requests" data-act="switchSettingsTab" data-act-args="[&quot;requests&quot;]">
               <span class="sm-tab-icon">📬</span> Zugriffsanfragen
               <span class="sm-tab-badge hidden" id="requests-badge">0</span>
             </button>
-            <button class="sm-tab" data-tab="coa" onclick="switchSettingsTab('coa')">
+            <button class="sm-tab" data-tab="coa" data-act="switchSettingsTab" data-act-args="[&quot;coa&quot;]">
               <span class="sm-tab-icon">📋</span> Kontenplan
             </button>
-            <button class="sm-tab" data-tab="rules" onclick="switchSettingsTab('rules')">
+            <button class="sm-tab" data-tab="rules" data-act="switchSettingsTab" data-act-args="[&quot;rules&quot;]">
               <span class="sm-tab-icon">📐</span> Buchungsregeln
             </button>
-            <button class="sm-tab" data-tab="data" onclick="switchSettingsTab('data')">
+            <button class="sm-tab" data-tab="data" data-act="switchSettingsTab" data-act-args="[&quot;data&quot;]">
               <span class="sm-tab-icon">🗄</span> Daten
             </button>
-            <button class="sm-tab" data-tab="audit" onclick="switchSettingsTab('audit')">
+            <button class="sm-tab" data-tab="audit" data-act="switchSettingsTab" data-act-args="[&quot;audit&quot;]">
               <span class="sm-tab-icon">📋</span> Aktivitätslog
             </button>
           </nav>
           <div class="sm-sidebar-footer">
-            <button onclick="doLogout()" class="sm-logout-btn">Abmelden</button>
+            <button data-act="doLogout" class="sm-logout-btn">Abmelden</button>
           </div>
         </div>
 
@@ -628,7 +627,7 @@
         <div class="sm-main">
           <div class="sm-header">
             <div class="sm-header-title" id="sm-title">Benutzer</div>
-            <button class="sm-close" onclick="toggleSettings()">✕</button>
+            <button class="sm-close" data-act="toggleSettings">✕</button>
           </div>
           <div class="sm-body">
 
@@ -641,8 +640,8 @@
                 <div style="font-size:.82rem;font-weight:600;color:#1e2433;margin-bottom:.6rem">Passwort zurücksetzen für <span id="reset-pw-name"></span></div>
                 <input class="login-input" id="reset-pw-val" type="password" placeholder="Neues Passwort" style="margin-bottom:.5rem" />
                 <div style="display:flex;gap:.5rem;margin-top:.4rem">
-                  <button onclick="confirmResetPw()" style="padding:.4rem .9rem;background:#4f6ef7;color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Speichern</button>
-                  <button onclick="cancelResetPw()" style="padding:.4rem .9rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:7px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+                  <button data-act="confirmResetPw" style="padding:.4rem .9rem;background:#4f6ef7;color:#fff;border:none;border-radius:7px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Speichern</button>
+                  <button data-act="cancelResetPw" style="padding:.4rem .9rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:7px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
                 </div>
                 <div id="reset-pw-error" style="color:#dc2626;font-size:.73rem;margin-top:.4rem"></div>
               </div>
@@ -655,13 +654,13 @@
                 </div>
                 <div style="position:relative;margin-bottom:.75rem">
                   <input class="login-input" id="new-user-pw" type="password" placeholder="Passwort" style="padding-right:2.5rem" />
-                  <button type="button" onclick="toggleNewUserPw()" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
+                  <button type="button" data-act="toggleNewUserPw" style="position:absolute;right:.6rem;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#8b95a9;font-size:.85rem;padding:0">👁</button>
                 </div>
-                <button onclick="addUser()" class="sm-action-btn">Benutzer erstellen</button>
+                <button data-act="addUser" class="sm-action-btn">Benutzer erstellen</button>
                 <div id="users-error" style="color:#dc2626;font-size:.75rem;margin-top:.5rem"></div>
               </div>
               <div style="border-top:1px solid #e4e9f5;padding-top:1rem;margin-top:1rem">
-                <button onclick="openChangePassword()" style="padding:.45rem 1rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">🔑 Eigenes Passwort ändern</button>
+                <button data-act="openChangePassword" style="padding:.45rem 1rem;background:#fff;color:#4f6ef7;border:1px solid #d6dff5;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit">🔑 Eigenes Passwort ändern</button>
               </div>
             </div>
 
@@ -673,12 +672,12 @@
             <!-- ── CoA Tab ── -->
             <div id="sm-coa-tab" class="sm-tab-content hidden">
               <div class="settings-toolbar">
-                <button class="settings-btn" onclick="restoreDefaultPL()" title="Standard wiederherstellen">🔄 Standard</button>
-                <button class="settings-btn" onclick="exportCoA()" title="Als JSON exportieren">⬇ Export</button>
-                <button class="settings-btn" onclick="importCoADialog()" title="JSON importieren">⬆ Import</button>
+                <button class="settings-btn" data-act="restoreDefaultPL" title="Standard wiederherstellen">🔄 Standard</button>
+                <button class="settings-btn" data-act="exportCoA" title="Als JSON exportieren">⬇ Export</button>
+                <button class="settings-btn" data-act="importCoADialog" title="JSON importieren">⬆ Import</button>
               </div>
               <div class="coa-tree" id="coa-tree"></div>
-              <button class="coa-add-section" onclick="addNewSection()">+ Neue Sektion</button>
+              <button class="coa-add-section" data-act="addNewSection">+ Neue Sektion</button>
             </div>
 
             <!-- ── Rules Tab ── -->
@@ -687,10 +686,10 @@
                 <div style="margin-bottom: 1rem">
                   <input type="text" class="search-box" id="txn-picker-search"
                          placeholder="Buchungen durchsuchen (alle Spalten)…"
-                         oninput="updateTransactionPicker()" />
+                         data-input="updateTransactionPicker" />
                   <div style="display:flex;align-items:center;gap:.5rem;margin-top:.5rem">
                     <label style="display:flex;align-items:center;gap:.35rem;cursor:pointer;font-size:.75rem;color:#4b5563;user-select:none">
-                      <input type="checkbox" id="txn-filter-guv" onchange="updateTransactionPicker()" style="accent-color:#4f6ef7" />
+                      <input type="checkbox" id="txn-filter-guv" data-change="updateTransactionPicker" style="accent-color:#4f6ef7" />
                       Nur GuV-Konten (400000–499999, 600000–799999)
                     </label>
                   </div>
@@ -702,7 +701,7 @@
                     <thead style="position:sticky;top:0;background:#f4f6fb;border-bottom:1px solid #e4e9f5">
                       <tr>
                         <th style="padding:.4rem;text-align:center;width:30px">
-                          <input type="checkbox" id="txn-select-all" onchange="toggleSelectAllTransactions()"/>
+                          <input type="checkbox" id="txn-select-all" data-change="toggleSelectAllTransactions"/>
                         </th>
                         <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Datum</th>
                         <th style="padding:.4rem;text-align:left;color:#a0aabb;font-weight:700">Beleg</th>
@@ -718,9 +717,9 @@
                   </table>
                 </div>
                 <div id="txn-picker-pagination" style="display:none;align-items:center;justify-content:center;gap:.6rem;padding:.5rem 0;margin-bottom:.5rem">
-                  <button id="txn-page-prev" onclick="txnPickerPage(-1)" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
+                  <button id="txn-page-prev" data-act="txnPickerPage" data-act-args="[-1]" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
                   <span id="txn-page-label" style="font-size:.75rem;color:#8b95a9;min-width:60px;text-align:center"></span>
-                  <button id="txn-page-next" onclick="txnPickerPage(+1)" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit">Weiter ›</button>
+                  <button id="txn-page-next" data-act="txnPickerPage" data-act-args="[1]" style="padding:.25rem .65rem;border:1px solid #d6dff5;border-radius:6px;background:#fff;color:#4f6ef7;font-size:.75rem;cursor:pointer;font-family:inherit">Weiter ›</button>
                 </div>
                 <div id="txn-selection-panel" style="display:none;background:#f0f4ff;border:1px solid #d6dff5;padding:1rem;border-radius:8px;margin-bottom:1rem">
                   <div style="font-size:.8rem;color:#1e2433;margin-bottom:.8rem">
@@ -731,8 +730,8 @@
                     <select id="txn-bulk-target-sub" style="padding:.4rem;background:#fff;color:#1e2433;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;font-family:inherit">
                       <option value="">-- Kategorie wählen --</option>
                     </select>
-                    <button onclick="applyBulkReclassification()" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
-                    <button onclick="clearTransactionSelection()" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
+                    <button data-act="applyBulkReclassification" style="padding:.4rem;background:#4f6ef7;color:#fff;border:none;border-radius:6px;font-size:.75rem;font-weight:600;cursor:pointer;font-family:inherit">Zuordnen</button>
+                    <button data-act="clearTransactionSelection" style="padding:.4rem;background:#fff;color:#8b95a9;border:1px solid #d6dff5;border-radius:6px;font-size:.75rem;cursor:pointer;font-family:inherit">Abbrechen</button>
                   </div>
                 </div>
               </div>
@@ -752,7 +751,7 @@
                     <div style="font-weight:600;color:#1e2433;font-size:.82rem">Alle Daten löschen</div>
                     <div style="color:#8b95a9;font-size:.75rem;margin-top:.2rem">Löscht alle hochgeladenen Buchungsdaten und Dateien unwiderruflich.</div>
                   </div>
-                  <button onclick="resetAll()" class="sm-danger-btn">Alle Daten löschen</button>
+                  <button data-act="resetAll" class="sm-danger-btn">Alle Daten löschen</button>
                 </div>
               </div>
             </div>
@@ -778,8 +777,8 @@
                 </table>
               </div>
               <div style="display:flex;align-items:center;justify-content:flex-end;gap:.5rem;margin-top:.75rem">
-                <button id="audit-prev" onclick="auditPage(-1)" style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
-                <button id="audit-next" onclick="auditPage(1)"  style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">Weiter ›</button>
+                <button id="audit-prev" data-act="auditPage" data-act-args="[-1]" style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit" disabled>‹ Zurück</button>
+                <button id="audit-next" data-act="auditPage" data-act-args="[1]"  style="padding:.3rem .7rem;background:#fff;border:1px solid #d6dff5;border-radius:6px;font-size:.72rem;cursor:pointer;font-family:inherit">Weiter ›</button>
               </div>
             </div>
 
@@ -793,15 +792,15 @@
       <div class="login-card" style="max-width:400px;margin:0 auto">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
           <div class="login-title" style="margin:0">✓ Konto erstellt</div>
-          <button onclick="closeTempPwModal()" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
+          <button data-act="closeTempPwModal" style="background:none;border:none;font-size:1.1rem;cursor:pointer;color:#8b95a9">✕</button>
         </div>
         <div style="font-size:.8rem;color:#8b95a9;margin-bottom:1rem">Bitte teilen Sie dieses temporäre Passwort sicher mit dem Benutzer. Es wird nur einmal angezeigt.</div>
         <div style="font-size:.78rem;color:#4f6ef7;font-weight:600;margin-bottom:.35rem" id="temp-pw-name"></div>
         <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:1.25rem">
           <code id="temp-pw-value" style="flex:1;background:#f4f6fb;border:1px solid #e4e9f5;border-radius:8px;padding:.6rem .85rem;font-size:.9rem;font-family:monospace;letter-spacing:.05em;word-break:break-all"></code>
-          <button id="temp-pw-copy-btn" onclick="copyTempPassword()" style="padding:.5rem .75rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">Kopieren</button>
+          <button id="temp-pw-copy-btn" data-act="copyTempPassword" style="padding:.5rem .75rem;background:#4f6ef7;color:#fff;border:none;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap">Kopieren</button>
         </div>
-        <button onclick="closeTempPwModal()" style="width:100%;padding:.6rem;background:#f4f6fb;color:#4f6ef7;border:1px solid #e4e9f5;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Schließen</button>
+        <button data-act="closeTempPwModal" style="width:100%;padding:.6rem;background:#f4f6fb;color:#4f6ef7;border:1px solid #e4e9f5;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer;font-family:inherit">Schließen</button>
       </div>
     </div>
 

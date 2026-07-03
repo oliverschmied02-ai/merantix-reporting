@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import { APP, resetAPP } from '../state.js';
 import { tryDecode, parseIndexXml, parseSachkontenstamm, parseBSP } from './parser.js';
 import { showToast, setScreen, setLoading } from '../ui/screen.js';

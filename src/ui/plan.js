@@ -87,7 +87,7 @@ function versionCard(v) {
   const typeLabel = TYPE_LABEL[v.type] ?? v.type;
   const createdAt = new Date(v.created_at).toLocaleDateString('de-DE');
   return `
-    <div class="plan-version-card ${locked ? 'locked' : ''}" onclick="planOpenVersion(${v.id})">
+    <div class="plan-version-card ${locked ? 'locked' : ''}" data-act="planOpenVersion" data-act-args="[${v.id}]">
       <div class="plan-vc-top">
         <span class="plan-vc-type">${esc(typeLabel)}</span>
         ${locked ? `<span class="plan-vc-lock" title="Gesperrt">🔒</span>` : ''}
@@ -132,7 +132,7 @@ export async function submitCreateVersion() {
   try {
     const newVersion = await createPlanVersion(name, year, type, notes || null);
     closeCreateVersion();
-    showToast('Version erstellt');
+    showToast('Version erstellt', 'success');
     await planOpenVersion(newVersion.id);
   } catch (e) {
     errEl.textContent = e.message;
@@ -180,7 +180,7 @@ export function renderDetailHeader() {
   if (!el) return;
   el.innerHTML = `
     <div style="display:flex;align-items:center;gap:.75rem;flex-wrap:wrap">
-      <button class="plan-back-btn" onclick="planBackToList()">← Versionen</button>
+      <button class="plan-back-btn" data-act="planBackToList">← Versionen</button>
       <div>
         <div class="plan-detail-title">${esc(v.name)}</div>
         <div class="plan-detail-meta">
@@ -191,10 +191,10 @@ export function renderDetailHeader() {
       <div style="margin-left:auto;display:flex;gap:.5rem;align-items:center;flex-wrap:wrap">
         ${!locked ? `<span class="plan-save-status" id="plan-save-status"></span>` : ''}
         ${!locked
-          ? `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔒 Sperren</button>`
-          : `<button class="btn-sm" onclick="planLockVersion(${v.id})">🔓 Entsperren</button>`
+          ? `<button class="btn-sm" data-act="planLockVersion" data-act-args="[${v.id}]">🔒 Sperren</button>`
+          : `<button class="btn-sm" data-act="planLockVersion" data-act-args="[${v.id}]">🔓 Entsperren</button>`
         }
-        <button class="btn-sm btn-danger-outline" onclick="planConfirmDeleteVersion(${v.id})">Löschen</button>
+        <button class="btn-sm btn-danger-outline" data-act="planConfirmDeleteVersion" data-act-args="[${v.id}]">Löschen</button>
       </div>
     </div>`;
 }
@@ -204,7 +204,7 @@ function renderCategoryFilter() {
   if (!el) return;
   el.innerHTML = CATEGORIES.map(cat => `
     <button class="seg-btn ${_categoryFilter === cat ? 'active' : ''}"
-            onclick="planSetCategory('${cat}')">
+            data-act="planSetCategory" data-act-args="[&quot;${cat}&quot;]">
       ${CAT_LABEL[cat]}
     </button>`).join('');
 }
@@ -240,7 +240,7 @@ export function renderGrid() {
   }
 
   // Revenue / Depreciation — add button on the LEFT
-  const addBtn = !locked ? `<button class="btn-plan-add" onclick="planAddLineItem()">+ Position</button>` : '';
+  const addBtn = !locked ? `<button class="btn-plan-add" data-act="planAddLineItem">+ Position</button>` : '';
 
   if (!items.length) {
     el.innerHTML = `<div class="plan-empty plan-empty-row">
@@ -353,7 +353,7 @@ function renderOpexTable(items, entryMap, locked) {
     const rows = lis.map(li => opexGridRow(li, entryMap.get(li.id) || {}, locked)).join('');
 
     const addBtn = !locked
-      ? `<button class="pg-group-add" onclick="planAddLineItem('${esc(g.id)}')" title="Position hinzufügen">+</button>`
+      ? `<button class="pg-group-add" data-act="planAddLineItem" data-act-args="[&quot;${esc(g.id)}&quot;]" title="Position hinzufügen">+</button>`
       : '';
 
     return `
@@ -402,7 +402,7 @@ function opexGridRow(li, monthAmounts, locked) {
           <input type="text" class="pg-input"
                  value="${val !== 0 ? formatInputVal(val) : ''}" placeholder="—"
                  data-li="${li.id}" data-month="${m}"
-                 onblur="planCellBlur(this)" onkeydown="planCellKeydown(event,this)" onfocus="this.select()"/>
+                 data-blur="planCellBlur" data-blur-args="[&quot;@this&quot;]" data-keydown="planCellKeydown" data-keydown-args="[&quot;@event&quot;,&quot;@this&quot;]" data-focus="selectAll" data-focus-args="[&quot;@this&quot;]"/>
         </td>`);
     }
   }
@@ -410,12 +410,12 @@ function opexGridRow(li, monthAmounts, locked) {
   const nameEl = locked
     ? `<span class="pg-li-label">${esc(li.label)}</span>`
     : `<span class="pg-li-label editable" contenteditable="true" data-li-id="${li.id}"
-             onblur="planSaveLineName(${li.id},this)"
-             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}">${esc(li.label)}</span>`;
+             data-blur="planSaveLineName" data-blur-args="[${li.id},&quot;@this&quot;]"
+             data-keydown="enterBlur" data-keydown-args="[&quot;@event&quot;,&quot;@this&quot;]">${esc(li.label)}</span>`;
 
   const delBtn = !locked ? `
     <span class="pg-row-actions">
-      <button class="btn-icon btn-icon-del" onclick="planDeleteLineItem(${li.id})" title="Löschen">
+      <button class="btn-icon btn-icon-del" data-act="planDeleteLineItem" data-act-args="[${li.id}]" title="Löschen">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       </button>
     </span>` : '';
@@ -423,7 +423,7 @@ function opexGridRow(li, monthAmounts, locked) {
   const catCell = locked
     ? `<td class="pg-cat-cell"><span class="pg-cat-static">${esc(opexGroupLabel(li.item_id))}</span></td>`
     : `<td class="pg-cat-cell">
-         <select class="pg-cat-select" onchange="planOpexCategoryChange(${li.id}, this)">
+         <select class="pg-cat-select" data-change="planOpexCategoryChange" data-change-args="[${li.id},&quot;@this&quot;]">
            ${opexCategoryOptions(li.item_id)}
          </select>
        </td>`;
@@ -474,7 +474,7 @@ export async function planOpexCategoryChange(liId, sel) {
     li.item_id = newItemId;
     for (const e of _entries) if (e.line_item_id === liId) e.item_id = newItemId;
     renderGrid();  // move the row into its new category group
-    showToast('Kategorie geändert');
+    showToast('Kategorie geändert', 'success');
   } catch (e) {
     sel.value = li.item_id;
     showToast('Fehler: ' + e.message);
@@ -545,9 +545,9 @@ function gridRow(li, monthAmounts, locked) {
                  placeholder="—"
                  data-li="${li.id}"
                  data-month="${m}"
-                 onblur="planCellBlur(this)"
-                 onkeydown="planCellKeydown(event,this)"
-                 onfocus="this.select()"
+                 data-blur="planCellBlur" data-blur-args="[&quot;@this&quot;]"
+                 data-keydown="planCellKeydown" data-keydown-args="[&quot;@event&quot;,&quot;@this&quot;]"
+                 data-focus="selectAll" data-focus-args="[&quot;@this&quot;]"
           />
         </td>`);
     }
@@ -556,10 +556,10 @@ function gridRow(li, monthAmounts, locked) {
   const actionBtns = !locked ? `
     <span class="pg-row-actions">
       ${cat === 'revenue' ? `
-        <button class="btn-icon btn-icon-driver" onclick="openDriverModal(${li.id})" title="Revenue-Treiber">
+        <button class="btn-icon btn-icon-driver" data-act="openDriverModal" data-act-args="[${li.id}]" title="Revenue-Treiber">
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
         </button>` : ''}
-      <button class="btn-icon btn-icon-del" onclick="planDeleteLineItem(${li.id})" title="Löschen">
+      <button class="btn-icon btn-icon-del" data-act="planDeleteLineItem" data-act-args="[${li.id}]" title="Löschen">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
       </button>
     </span>` : '';
@@ -569,8 +569,8 @@ function gridRow(li, monthAmounts, locked) {
     : `<span class="pg-li-label editable"
              contenteditable="true"
              data-li-id="${li.id}"
-             onblur="planSaveLineName(${li.id},this)"
-             onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur()}"
+             data-blur="planSaveLineName" data-blur-args="[${li.id},&quot;@this&quot;]"
+             data-keydown="enterBlur" data-keydown-args="[&quot;@event&quot;,&quot;@this&quot;]"
            >${esc(li.label)}</span>`;
 
   return `
@@ -903,7 +903,7 @@ export async function submitAddLineItem() {
 
     closeLineItemModal();
     renderGrid();
-    showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt');
+    showToast(driverPayload ? 'Position + Einträge generiert' : 'Position hinzugefügt', 'success');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -922,7 +922,7 @@ export async function planDeleteLineItem(id) {
       if (key.startsWith(`${id}_`)) delete _pendingEdits[key];
     }
     renderGrid();
-    showToast('Position gelöscht');
+    showToast('Position gelöscht', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -938,15 +938,15 @@ export function planConfirmDeleteVersion(id) {
   delBtn.outerHTML = `
     <span class="inline-confirm">
       <span class="inline-confirm-label">Wirklich löschen?</span>
-      <button class="btn-sm btn-danger" onclick="planDeleteVersionConfirmed(${id})">Ja, löschen</button>
-      <button class="btn-sm" onclick="renderDetailHeader()">Abbrechen</button>
+      <button class="btn-sm btn-danger" data-act="planDeleteVersionConfirmed" data-act-args="[${id}]">Ja, löschen</button>
+      <button class="btn-sm" data-act="renderDetailHeader">Abbrechen</button>
     </span>`;
 }
 
 export async function planDeleteVersionConfirmed(id) {
   try {
     await (await import('../lib/db.js')).deletePlanVersion(id);
-    showToast('Version gelöscht');
+    showToast('Version gelöscht', 'success');
     planBackToList();
     await loadVersions();
   } catch (e) {
@@ -1324,7 +1324,7 @@ export async function submitDriver() {
     await generateFromDrivers(liId);
     _entries = await getPlanEntries(_currentVersion.id);
     renderGrid();
-    showToast('Umsatz aktualisiert');
+    showToast('Umsatz aktualisiert', 'success');
   } catch (e) {
     errEl.textContent = e.message;
   } finally {
@@ -1358,7 +1358,7 @@ export async function driverDelete(driverId) {
     await generateFromDrivers(liId);
     _entries = await getPlanEntries(_currentVersion.id);
     renderGrid();
-    showToast('Treiber gelöscht');
+    showToast('Treiber gelöscht', 'success');
   } catch (e) {
     showToast('Fehler: ' + e.message);
   }
@@ -1442,10 +1442,10 @@ function _renderDriverList() {
               <td style="padding:.3rem .4rem;text-align:right;color:#4f6ef7;font-weight:700">${FMT_EUR.format(annualAmt)}</td>
               <td style="padding:.3rem .4rem;text-align:right;color:#6b7a99">${FMT_EUR.format(annualAmt / 12)}</td>
               <td style="padding:.3rem .4rem;text-align:right;white-space:nowrap">
-                <button class="btn-icon btn-icon-edit" onclick="driverEdit(${d.id})" title="Bearbeiten">
+                <button class="btn-icon btn-icon-edit" data-act="driverEdit" data-act-args="[${d.id}]" title="Bearbeiten">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 </button>
-                <button class="btn-icon btn-icon-del" onclick="driverDelete(${d.id})" title="Löschen">
+                <button class="btn-icon btn-icon-del" data-act="driverDelete" data-act-args="[${d.id}]" title="Löschen">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
                 </button>
               </td>

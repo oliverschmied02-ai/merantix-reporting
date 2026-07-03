@@ -104,8 +104,8 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
         <td class="hc-td hc-date">${d.end_date   ? String(d.end_date).slice(0, 7)   : '—'}</td>
         ${!locked ? `
           <td class="hc-td hc-actions">
-            <button class="btn-sm hc-btn" onclick="editPerson(${d._li.id},${d.id})">✎</button>
-            <button class="btn-sm hc-btn hc-btn-del" onclick="deletePerson(${d._li.id},${d.id})">✕</button>
+            <button class="btn-sm hc-btn" data-act="editPerson" data-act-args="[${d._li.id},${d.id}]">✎</button>
+            <button class="btn-sm hc-btn hc-btn-del" data-act="deletePerson" data-act-args="[${d._li.id},${d.id}]">✕</button>
           </td>` : ''}
       </tr>`;
   }).join('');
@@ -147,7 +147,7 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
     <div class="hc-wrap">
       <div class="hc-toolbar">
         ${!locked ? `
-          <button class="btn-plan-primary" style="font-size:.78rem;padding:.35rem .85rem" onclick="openPersonModal(${defaultLiId})">+ Person</button>
+          <button class="btn-plan-primary" style="font-size:.78rem;padding:.35rem .85rem" data-act="openPersonModal" data-act-args="[${defaultLiId}]">+ Person</button>
           <span class="hc-autohint">Gehalt + Bonus → Löhne &amp; Gehälter · AG-NK → Sozialaufwendungen · wird automatisch berechnet</span>
         ` : ''}
       </div>
@@ -205,7 +205,7 @@ export async function editPerson(lineItemId, personId) {
 export async function deletePerson(lineItemId, personId) {
   try {
     await deletePersonnelDriver(lineItemId, personId);
-    showToast('Person gelöscht');
+    showToast('Person gelöscht', 'success');
     await _autoGenerate();
   } catch (e) { showToast('Fehler: ' + e.message); }
 }
@@ -252,7 +252,7 @@ export async function submitPerson() {
       await createPersonnelDriver(_personModal.lineItemId, payload);
     }
     closePersonModal();
-    showToast(_personModal.editId ? 'Person aktualisiert' : 'Person hinzugefügt');
+    showToast(_personModal.editId ? 'Person aktualisiert' : 'Person hinzugefügt', 'success');
     await _autoGenerate();
   } catch (e) {
     errEl.textContent = e.message;
