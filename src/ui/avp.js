@@ -199,7 +199,11 @@ async function renderAvpContent() {
 
   try {
     const [lineItems, entries] = await Promise.all([
-      getPlanLineItems(_selVersion, { activeOnly: false }),
+      // Only active line items: a plan position deleted (soft-deleted) in the
+      // planning view must disappear here too. aggregateByCategory maps entries
+      // to a category via this list, so entries of deleted line items are
+      // excluded from the plan totals as well, not just the drill-down.
+      getPlanLineItems(_selVersion, { activeOnly: true }),
       getPlanEntries(_selVersion),
     ]);
 

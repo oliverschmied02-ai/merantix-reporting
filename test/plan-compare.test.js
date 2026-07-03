@@ -66,6 +66,18 @@ describe('aggregateByCategory', () => {
     assert.equal(m.get('revenue')[1], 0);
   });
 
+  it('excludes entries of deleted (inactive) line items when only active ones are passed', () => {
+    // AVP passes only active line items; a soft-deleted line item (id 2) is
+    // absent from the list, so its lingering entries must not count.
+    const activeOnly = [{ id: 1, category: 'revenue' }];
+    const entries = [
+      { line_item_id: 1, month: 1, amount: 5000 },  // active
+      { line_item_id: 2, month: 1, amount: 5000 },  // deleted line item
+    ];
+    const m = aggregateByCategory(activeOnly, entries);
+    assert.equal(m.get('revenue')[1], 5000); // not 10000
+  });
+
   it('EBITDA = revenue - personnel - opex (no depreciation)', () => {
     const items = [
       { id: 1, category: 'revenue' },
