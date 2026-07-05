@@ -519,6 +519,15 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
 .txn-row { border-bottom: 1px solid var(--c-border-soft); }
 .txn-row:hover { background: var(--c-surface-2); }
 
+/* Plan P&L overview (Planung → P&L tab) */
+.plan-pnl-caption { font-size: .82rem; font-weight: 600; color: var(--c-text-soft); margin: .25rem 0 .85rem; }
+.plan-grid-pnl .pg-pnl-sub td {
+  background: var(--c-surface-3); font-weight: 700; color: var(--c-text);
+  border-top: 1px solid var(--c-border); border-bottom: 1px solid var(--c-border);
+}
+.plan-grid-pnl .pg-pnl-pos { color: var(--c-success); }
+.plan-grid-pnl .pg-pnl-neg { color: var(--c-danger); }
+
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--c-border-2); border-radius: 3px; }

@@ -30,9 +30,9 @@ let _driverLineItemId = null;
 let _driverEditId     = null;
 let _driverList       = [];
 
-const CATEGORIES = ['revenue', 'personnel', 'opex', 'depreciation'];
+const CATEGORIES = ['revenue', 'personnel', 'opex', 'depreciation', 'pnl'];
 const CAT_LABEL  = { revenue: 'Umsatz', personnel: 'Personal',
-                     opex: 'OpEx', depreciation: 'Abschreibungen' };
+                     opex: 'OpEx', depreciation: 'Abschreibungen', pnl: 'P&L' };
 const CAT_COLOR  = { revenue: '#16a34a', personnel: '#4f6ef7', opex: '#d97706',
                      depreciation: '#9333ea' };
 const TYPE_LABEL = { budget: 'Budget', forecast: 'Forecast', scenario: 'Szenario' };
@@ -213,6 +213,11 @@ function renderCategoryFilter() {
 export function renderGrid() {
   const el = document.getElementById('plan-detail-content');
   if (!el || !_currentVersion) return;
+
+  if (_categoryFilter === 'pnl') {
+    el.innerHTML = renderPnlTable();
+    return;
+  }
 
   if (_categoryFilter === 'personnel') {
     setPersonnelRefresh(async () => {
@@ -1213,6 +1218,68 @@ function buildEntryMap() {
     m.get(e.line_item_id)[e.month] = Number(e.amount);
   }
   return m;
+}
+
+// ── Plan P&L overview ────────────────────────────────────────────────
+// A plan-only P&L for the current version, using the same category rollup as
+// the Ist-vs-Plan view (aggregateByCategory). Costs are shown negative; EBITDA
+// and EBIT are computed subtotals. Read-only.
+function renderPnlTable() {
+  const monthly = aggregateByCategory(_lineItems, _entries);
+  const cat = (k, m) => monthly.get(k)?.[m] || 0;
+  const months = Array.from({ length: MONTHS }, (_, i) => i + 1);
+  const ebitda = m => cat('revenue', m) - cat('personnel', m) - cat('opex', m);
+  const ebit   = m => ebitda(m) - cat('depreciation', m);
+
+  // kind: 'income' (+), 'cost' (shown −), 'subtotal' (signed, bold)
+  const rows = [
+    { label: 'Umsatzerlöse',                 get: m => cat('revenue', m),      kind: 'income' },
+    { label: 'Personalaufwand',              get: m => cat('personnel', m),    kind: 'cost' },
+    { label: 'Sonstige betr. Aufwendungen',  get: m => cat('opex', m),         kind: 'cost' },
+    { label: 'EBITDA',                       get: ebitda,                      kind: 'subtotal' },
+    { label: 'Abschreibungen',               get: m => cat('depreciation', m), kind: 'cost' },
+    { label: 'EBIT',                         get: ebit,                        kind: 'subtotal' },
+  ];
+
+  const fmtSigned = (v, cost) => {
+    if (!v) return '<span class="pg-zero">—</span>';
+    const neg = cost ? true : v < 0;
+    return (neg ? '−' : '') + fmtCell(Math.abs(v));
+  };
+  const cellHtml = (row, v) => {
+    if (row.kind === 'subtotal') {
+      const c = v > 0 ? 'pg-pnl-pos' : v < 0 ? 'pg-pnl-neg' : '';
+      return `<span class="${c}">${fmtSigned(v)}</span>`;
+    }
+    return fmtSigned(v, row.kind === 'cost');
+  };
+
+  const body = rows.map(row => {
+    const cells = months.map(m => `<td class="pg-cell">${cellHtml(row, row.get(m))}</td>`).join('');
+    const total = months.reduce((s, m) => s + row.get(m), 0);
+    const cls = row.kind === 'subtotal' ? 'pg-row pg-pnl-sub' : 'pg-row';
+    return `
+      <tr class="${cls}">
+        <td class="pg-pos-cell">${esc(row.label)}</td>
+        ${cells}
+        <td class="pg-total-cell">${cellHtml(row, total)}</td>
+      </tr>`;
+  }).join('');
+
+  return `
+    <div class="plan-grid-wrap">
+      <div class="plan-pnl-caption">Plan-GuV · ${esc(_currentVersion.name)} · ${_currentVersion.year}</div>
+      <table class="plan-grid plan-grid-pnl">
+        <thead>
+          <tr>
+            <th class="pg-pos">Position</th>
+            ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
+            <th class="pg-total">Gesamt</th>
+          </tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>`;
 }
 
 function fmtCell(v) {
