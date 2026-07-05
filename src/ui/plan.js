@@ -22,6 +22,7 @@ let _currentVersion = null;
 let _lineItems      = [];
 let _entries        = [];
 let _categoryFilter = 'revenue';
+let _pnlExpanded = new Set();  // expanded rows in the P&L tab drill-down
 let _pendingEdits   = {};
 let _saving         = false;
 
@@ -164,6 +165,7 @@ export async function planOpenVersion(id) {
     _lineItems      = lineItems;
     _entries        = entries;
     _categoryFilter = 'revenue';
+    _pnlExpanded    = new Set();
 
     renderDetailHeader();
     renderCategoryFilter();
@@ -1221,64 +1223,105 @@ function buildEntryMap() {
 }
 
 // ── Plan P&L overview ────────────────────────────────────────────────
-// A plan-only P&L for the current version, using the same category rollup as
-// the Ist-vs-Plan view (aggregateByCategory). Costs are shown negative; EBITDA
-// and EBIT are computed subtotals. Read-only.
+// A plan-only P&L for the current version. Same structure as the Ist-vs-Plan
+// view: category rows (Umsatz, Personalaufwand, OpEx, EBITDA, Abschreibungen)
+// via aggregateByCategory, with drill-down into line items (OpEx grouped by
+// sub-category). Read-only, one plan value per month + annual total.
+export function planPnlToggle(key) {
+  if (_pnlExpanded.has(key)) _pnlExpanded.delete(key);
+  else _pnlExpanded.add(key);
+  renderGrid();
+}
+
 function renderPnlTable() {
   const monthly = aggregateByCategory(_lineItems, _entries);
   const cat = (k, m) => monthly.get(k)?.[m] || 0;
   const months = Array.from({ length: MONTHS }, (_, i) => i + 1);
-  const ebitda = m => cat('revenue', m) - cat('personnel', m) - cat('opex', m);
-  const ebit   = m => ebitda(m) - cat('depreciation', m);
+  const rowVal = (key, m) =>
+    key === 'ebitda' ? cat('revenue', m) - cat('personnel', m) - cat('opex', m) : cat(key, m);
 
-  // kind: 'income' (+), 'cost' (shown −), 'subtotal' (signed, bold)
-  const rows = [
-    { label: 'Umsatzerlöse',                 get: m => cat('revenue', m),      kind: 'income' },
-    { label: 'Personalaufwand',              get: m => cat('personnel', m),    kind: 'cost' },
-    { label: 'Sonstige betr. Aufwendungen',  get: m => cat('opex', m),         kind: 'cost' },
-    { label: 'EBITDA',                       get: ebitda,                      kind: 'subtotal' },
-    { label: 'Abschreibungen',               get: m => cat('depreciation', m), kind: 'cost' },
-    { label: 'EBIT',                         get: ebit,                        kind: 'subtotal' },
-  ];
+  const liEntry = new Map();
+  for (const e of _entries) {
+    if (!liEntry.has(e.line_item_id)) liEntry.set(e.line_item_id, {});
+    liEntry.get(e.line_item_id)[e.month] = Number(e.amount);
+  }
+  const amt = v => (v ? fmtCell(v) : '<span class="pg-zero">—</span>');
+  const totalOf = get => months.reduce((s, m) => s + get(m), 0);
+  const drillable = new Set(['revenue', 'personnel', 'opex']);
 
-  const fmtSigned = (v, cost) => {
-    if (!v) return '<span class="pg-zero">—</span>';
-    const neg = cost ? true : v < 0;
-    return (neg ? '−' : '') + fmtCell(Math.abs(v));
-  };
-  const cellHtml = (row, v) => {
-    if (row.kind === 'subtotal') {
-      const c = v > 0 ? 'pg-pnl-pos' : v < 0 ? 'pg-pnl-neg' : '';
-      return `<span class="${c}">${fmtSigned(v)}</span>`;
-    }
-    return fmtSigned(v, row.kind === 'cost');
+  // line-item drill row
+  const liRow = li => {
+    const a = liEntry.get(li.id) || {};
+    const cells = months.map(m => `<td class="avp-cell avp-drill-cell plan">${amt(a[m] || 0)}</td>`).join('');
+    return `<tr class="avp-drill-row">
+      <td class="avp-drill-label"><span class="avp-drill-indent">↳</span>${esc(li.label)}</td>
+      ${cells}
+      <td class="avp-cell avp-drill-cell plan avp-ytd avp-ytd-sep">${amt(totalOf(m => a[m] || 0))}</td>
+    </tr>`;
   };
 
-  const body = rows.map(row => {
-    const cells = months.map(m => `<td class="pg-cell">${cellHtml(row, row.get(m))}</td>`).join('');
-    const total = months.reduce((s, m) => s + row.get(m), 0);
-    const cls = row.kind === 'subtotal' ? 'pg-row pg-pnl-sub' : 'pg-row';
-    return `
-      <tr class="${cls}">
-        <td class="pg-pos-cell">${esc(row.label)}</td>
+  const bodyRows = COMPARE_ROWS.flatMap(row => {
+    const isEbitda = !!row.computed;
+    const isDrill  = drillable.has(row.key);
+    const expanded = _pnlExpanded.has(row.key);
+    const chevron  = isDrill
+      ? `<span class="avp-drill-chevron ${expanded ? 'expanded' : ''}"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="${expanded ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}"/></svg></span>`
+      : `<span class="avp-drill-chevron-placeholder"></span>`;
+    const cells = months.map(m => `<td class="avp-cell">${amt(rowVal(row.key, m))}</td>`).join('');
+    const main = `
+      <tr class="avp-row${isEbitda ? ' avp-row-ebitda' : ''}${isDrill ? ' avp-row-drillable' : ''}"
+          ${isDrill ? `data-act="planPnlToggle" data-act-args="[&quot;${row.key}&quot;]"` : ''}>
+        <td class="avp-label">${chevron}${esc(row.label)}</td>
         ${cells}
-        <td class="pg-total-cell">${cellHtml(row, total)}</td>
+        <td class="avp-cell avp-ytd avp-ytd-sep">${amt(totalOf(m => rowVal(row.key, m)))}</td>
       </tr>`;
+    if (!isDrill || !expanded) return [main];
+
+    const items = _lineItems.filter(li => li.category === row.key);
+    const colspan = months.length + 2;
+    if (!items.length) {
+      return [main, `<tr class="avp-drill-row"><td class="avp-drill-label" colspan="${colspan}" style="padding-left:2.5rem;color:var(--c-text-faint);font-style:italic">Keine Positionen</td></tr>`];
+    }
+    if (row.key === 'opex') {
+      // group by sBA sub-category, like the Ist-vs-Plan drill-down
+      const subs = (APP.plDef.find(s => s.id === 'opex')?.subs) ?? [];
+      const subLabel = new Map(subs.map(s => [s.id, s.label]));
+      const byItem = new Map();
+      for (const li of items) {
+        const k = subLabel.has(li.item_id) ? li.item_id : '_other';
+        if (!byItem.has(k)) byItem.set(k, []);
+        byItem.get(k).push(li);
+      }
+      const keys = [...subs.map(s => s.id).filter(k => byItem.has(k)), ...(byItem.has('_other') ? ['_other'] : [])];
+      const out = [main];
+      for (const k of keys) {
+        const lis = byItem.get(k);
+        const grpAmt = {};
+        for (const li of lis) { const a = liEntry.get(li.id) || {}; for (const [m, v] of Object.entries(a)) grpAmt[m] = (grpAmt[m] || 0) + v; }
+        const gCells = months.map(m => `<td class="avp-cell avp-drill-cell plan">${amt(grpAmt[m] || 0)}</td>`).join('');
+        out.push(`<tr class="avp-drill-row avp-drill-group"><td class="avp-drill-label avp-drill-group-label">${esc(subLabel.get(k) || 'Sonstiges')}</td>${gCells}<td class="avp-cell avp-drill-cell plan avp-ytd avp-ytd-sep">${amt(totalOf(m => grpAmt[m] || 0))}</td></tr>`);
+        for (const li of lis) out.push(liRow(li));
+      }
+      return out;
+    }
+    return [main, ...items.map(liRow)];
   }).join('');
 
   return `
-    <div class="plan-grid-wrap">
+    <div class="avp-wrap plan-pnl-wrap">
       <div class="plan-pnl-caption">Plan-GuV · ${esc(_currentVersion.name)} · ${_currentVersion.year}</div>
-      <table class="plan-grid plan-grid-pnl">
-        <thead>
-          <tr>
-            <th class="pg-pos">Position</th>
-            ${MONTH_SHORT.map(m => `<th class="pg-month">${m}</th>`).join('')}
-            <th class="pg-total">Gesamt</th>
-          </tr>
-        </thead>
-        <tbody>${body}</tbody>
-      </table>
+      <div class="avp-table-scroll">
+        <table class="avp-table">
+          <thead>
+            <tr>
+              <th class="avp-label-head">Position</th>
+              ${MONTH_SHORT.map(m => `<th class="avp-month-head">${m}</th>`).join('')}
+              <th class="avp-annual-head avp-ytd-sep">Gesamt</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
     </div>`;
 }
 

@@ -21,7 +21,7 @@ import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTrans
 import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonthFrom, avpChangeMonthTo, avpToggleDrilldown } from './ui/avp.js';
 import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
-  planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
+  planOpenVersion, planBackToList, planSetCategory, planPnlToggle, planSaveEdits,
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
@@ -71,7 +71,7 @@ Object.assign(window, {
   changeYear, renderAuditLog, auditPage,
   // Planning
   openCreateVersion, closeCreateVersion, submitCreateVersion,
-  planOpenVersion, planBackToList, planSetCategory, planSaveEdits,
+  planOpenVersion, planBackToList, planSetCategory, planPnlToggle, planSaveEdits,
   planCellBlur, planCellKeydown,
   planAddLineItem, closeLineItemModal, closeLineItemModalAndCleanup, submitAddLineItem, planDeleteLineItem,
   plmCategoryChanged, plmDriverMode, plmUpdatePreview,
