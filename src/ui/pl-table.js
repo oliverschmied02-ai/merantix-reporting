@@ -18,7 +18,23 @@ export function buildPL() {
     </td></tr>`;
     return;
   }
-  if (!data) return;
+  if (!data) {
+    // computeAllPeriods() returns null when no fiscal year is resolvable.
+    // Don't leave the table silently blank — say why, so an import with an
+    // unrecognised period doesn't look like a broken P&L.
+    const thead = document.getElementById('pl-thead');
+    const tbody = document.getElementById('pl-tbody');
+    if (thead) thead.innerHTML = '';
+    if (tbody) {
+      const hasTxns = APP.allTransactions.length > 0;
+      tbody.innerHTML = `<tr><td colspan="20" style="padding:2rem;color:#8b95a9;text-align:center;font-size:.85rem">${
+        hasTxns
+          ? 'Keine Buchungen mit erkennbarem Wirtschaftsjahr.<br><small style="color:#a0aabb">Die Datei wurde geladen, aber aus Stapelnummer und Belegdatum ließ sich kein Buchungsjahr ableiten.</small>'
+          : 'Keine Daten geladen — bitte eine GDPdU-ZIP hochladen.'
+      }</td></tr>`;
+    }
+    return;
+  }
   APP.plData = data;
 
   const { periodPLs, ytdPL, periods, year, mode } = data;

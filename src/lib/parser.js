@@ -87,8 +87,16 @@ export function parseBSP(content, info) {
     const bsnr     = IDX.bsnr   >= 0 ? String(row[IDX.bsnr]  || '').trim() : '';
 
     const sp = parseStapel(stapelRaw);
-    const wjMonth  = sp?.month || null;
-    const wjYear   = sp?.year  || null;
+    let wjMonth = sp?.month || null;
+    let wjYear  = sp?.year  || null;
+    // Fallback: DATEV Stapelnummer formatting varies between exports and does
+    // not always encode the period. When it doesn't, derive the fiscal
+    // month/year from the Belegdatum so the booking can still be bucketed into
+    // the P&L instead of being silently dropped (which blanks the whole table).
+    if ((!wjMonth || !wjYear) && datum instanceof Date && !isNaN(datum)) {
+      wjMonth = wjMonth || (datum.getMonth() + 1);
+      wjYear  = wjYear  || datum.getFullYear();
+    }
     const beleg    = b1 || bsnr || stapelRaw.slice(0, 20);
 
     txns.push({ ktonr, gktonr: isNaN(gktonr) ? null : gktonr, soll, haben, datum, text, beleg, wjMonth, wjYear, stapelRaw });
