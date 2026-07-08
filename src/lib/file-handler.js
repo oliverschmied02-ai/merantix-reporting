@@ -103,6 +103,23 @@ export async function handleFile(file) {
     const fm = {};
     zip.forEach((p, e) => { fm[p.toLowerCase()] = e; });
 
+    // Resolve a table's URL (a bare filename from index.xml) to a zip entry.
+    // DATEV exports are sometimes zipped with their folder structure intact
+    // (e.g. "202605 GDPdU-Dateien/69845/20260101/Buchungssatzprotokoll.csv"),
+    // so an exact key match on the bare filename misses. Fall back to matching
+    // by basename anywhere in the tree.
+    const resolveEntry = (url) => {
+      if (!url) return undefined;
+      const lc = url.toLowerCase();
+      if (fm[lc]) return fm[lc];
+      if (fm[url]) return fm[url];
+      const base = lc.split('/').pop();
+      for (const [k, v] of Object.entries(fm)) {
+        if (k === base || k.endsWith('/' + base)) return v;
+      }
+      return undefined;
+    };
+
     let indexEntry;
     for (const [k, v] of Object.entries(fm)) {
       if (k === 'index.xml' || k.endsWith('/index.xml')) { indexEntry = v; break; }
@@ -120,14 +137,14 @@ export async function handleFile(file) {
     if (!bspInfo) { showToast('Buchungssatzprotokoll nicht gefunden.'); goBack(); return; }
 
     if (skInfo) {
-      const ske = fm[skInfo.url.toLowerCase()] || fm[skInfo.url];
+      const ske = resolveEntry(skInfo.url);
       if (ske) {
         setLoading('Sachkontenstamm…');
         parseSachkontenstamm(tryDecode(await ske.async('uint8array')), skInfo);
       }
     }
 
-    const bspe = fm[bspInfo.url.toLowerCase()] || fm[bspInfo.url];
+    const bspe = resolveEntry(bspInfo.url);
     if (!bspe) { showToast(bspInfo.url + ' nicht im ZIP.'); goBack(); return; }
 
     setLoading('Buchungen werden verarbeitet…');
