@@ -28,6 +28,7 @@ import {
   extractActualsFromPeriods,
   extractActualsForRange,
 } from '../src/lib/actuals-compare.js';
+import { splitPersonnel, spreadPersonnel } from '../src/lib/plan-personnel.js';
 
 // ── Fixtures ──────────────────────────────────────────────────────────
 //
@@ -279,7 +280,86 @@ describe('AVP · plan drill-down totals', () => {
     const parentTotal = rangeTotal(planByMonth, from, to);
 
     const drillTotal = lineItemTotals(entries, [1, 2], from, to);
-    assert.equal(drillTotal, parentTotal);          // must add up
+    assert.equal(drillTotal, parentTotal);            // must add up
     assert.equal(drillTotal, 9000 * (to - from + 1)); // Mar–Sep only, no Jan/Feb
+  });
+});
+
+// ── 5. Personnel: Ist and Plan are compared apples-to-apples ───────────
+//
+// The Ist personnel figure (P&L section) is wages + employer social costs.
+// The Plan personnel figure must therefore ALSO be wages + social (AG-NK),
+// which is why generate-personnel writes two line items — 'personnel_wages'
+// and 'personnel_social' — both under category 'personnel'. If the social
+// stream is ever dropped, Plan understates personnel by the burden rate and
+// the Ist-vs-Plan Δ becomes systematically wrong. This is the case Nicole
+// flagged ("Ist vs Plan bei Personalkosten"), so it gets an explicit guard.
+
+describe('AVP · personnel Ist-vs-Plan alignment', () => {
+  const YEAR = 2026;
+  const driver = {
+    employee_name: 'N',
+    annual_gross_salary: 120000,
+    payroll_burden_rate: 0.25,   // 25 % AG-NK employer burden
+    annual_bonus: 0,
+    bonus_month: 12,
+    start_date: null,
+    end_date: null,
+    salary_increase_date: null,
+    annual_gross_salary_post_increase: null,
+  };
+
+  // Plan built the way generate-personnel does: wages + social line items.
+  function planFromDriver(d) {
+    const { wages, social } = splitPersonnel(d, YEAR);
+    const lineItems = [
+      { id: 1, category: 'personnel', item_id: 'personnel_wages',  label: 'Löhne & Gehälter' },
+      { id: 2, category: 'personnel', item_id: 'personnel_social', label: 'Sozialaufwendungen' },
+    ];
+    const entries = [
+      ...wages.map(e  => ({ line_item_id: 1, month: e.month, amount: e.amount })),
+      ...social.map(e => ({ line_item_id: 2, month: e.month, amount: e.amount })),
+    ];
+    return { lineItems, entries };
+  }
+
+  // Ist that exactly equals the planned total cost each month (gross + burden).
+  function periodsFromDriver(d) {
+    const total = spreadPersonnel(d, YEAR);
+    return Array.from({ length: 12 }, (_, i) => {
+      const t = total.find(e => e.month === i + 1)?.amount ?? 0;
+      return { computed: { revenue: 0, personnel: t, opex: 0, ebitda: -t } };
+    });
+  }
+
+  it('plan personnel includes BOTH wages and employer social (AG-NK)', () => {
+    const { lineItems, entries } = planFromDriver(driver);
+    const { rows } = assemble(periodsFromDriver(driver), lineItems, entries);
+    const pers = rows.find(r => r.key === 'personnel');
+    // 120000/12 = 10000 wages + 25% burden = 12500 total per month.
+    assert.equal(pers.monthly[1].b, 12500);
+    assert.equal(pers.annual.b, 150000);          // 120k salary + 30k AG-NK
+  });
+
+  it('Ist equals Plan (Δ = 0) when actuals match the planned personnel cost', () => {
+    const { lineItems, entries } = planFromDriver(driver);
+    const { rows } = assemble(periodsFromDriver(driver), lineItems, entries);
+    const pers = rows.find(r => r.key === 'personnel');
+    assert.equal(pers.annual.a, 150000);
+    assert.equal(pers.annual.b, 150000);
+    assert.equal(pers.annual.delta, 0);
+  });
+
+  it('DROPPING the social stream understates plan personnel by the AG-NK burden', () => {
+    // Simulates the failure mode: only the wages line item is present, so the
+    // plan is short by the 25% employer burden and every Δ is wrong.
+    const { wages } = splitPersonnel(driver, YEAR);
+    const lineItems = [{ id: 1, category: 'personnel', item_id: 'personnel_wages', label: 'Löhne' }];
+    const entries = wages.map(e => ({ line_item_id: 1, month: e.month, amount: e.amount }));
+    const { rows } = assemble(periodsFromDriver(driver), lineItems, entries);
+    const pers = rows.find(r => r.key === 'personnel');
+    assert.equal(pers.annual.b, 120000);          // wages only — missing 30k AG-NK
+    assert.equal(pers.annual.a, 150000);          // Ist still full
+    assert.notEqual(pers.annual.delta, 0);        // => spurious variance
   });
 });
