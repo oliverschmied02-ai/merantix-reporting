@@ -151,11 +151,11 @@ export function spreadPersonnel(driver, planYear) {
 
 /**
  * Split ONE personnel driver into two monthly streams:
- *   - wages:  gross salary (prorated) + bonus       → "Löhne & Gehälter"
- *   - social: employer burden (AG-NK) on the gross  → "Sozialaufwendungen"
+ *   - wages:  gross salary (prorated) + bonus              → "Löhne & Gehälter"
+ *   - social: employer burden (AG-NK) on gross AND bonus   → "Sozialaufwendungen"
  *
- * The bonus is treated as wages (no burden applied), matching German P&L
- * conventions where AG social contributions sit in their own line.
+ * The bonus itself sits in the wages stream; the employer burden it triggers
+ * (AG-NK on the bonus) goes into the social stream, exactly like salary burden.
  *
  * @param {object} driver
  * @param {number} planYear

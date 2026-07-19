@@ -1,8 +1,9 @@
 /**
  * Personnel headcount UI — rendered when the plan detail view filters to 'personnel'.
  *
- * Renders a people table (name, role, country, salary, bonus, NK%, monthly cost)
- * with add/edit/delete and a generate-entries button.
+ * Renders a people table (name, role, country, salary, bonus, NK%, start, end)
+ * with add/edit/delete and a generate-entries button. Actual per-month costs
+ * are shown in the "Personalkosten / Monat" bar below the table.
  *
  * Depends on plan.js for refresh; plan.js passes a `refresh` callback via
  * setPersonnelRefresh() so this module never imports from plan.js (no circular deps).
@@ -58,7 +59,7 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
   const showGroup = false;
   const defaultLiId = wagesLi.id;
 
-  const totals = _computeTotals(allDrivers, year);
+  const totals = _computeTotals(allDrivers);
 
   const thGroup  = '';
   const tdGroupFn = () => '';
@@ -72,19 +73,13 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
       <th class="hc-th hc-num">Jahresgehalt</th>
       <th class="hc-th hc-num">Bonus</th>
       <th class="hc-th hc-num">AG-NK %</th>
-      <th class="hc-th hc-num">Kosten/Mon</th>
-      <th class="hc-th hc-num">p.a.</th>
       <th class="hc-th">Start</th>
       <th class="hc-th">Ende</th>
       ${!locked ? '<th class="hc-th"></th>' : ''}
     </tr>`;
 
   const bodyRows = allDrivers.map(d => {
-    const entries     = spreadPersonnel(d, year);
-    const annualCost  = entries.reduce((s, e) => s + e.amount, 0);
-    const activeMonths = entries.filter(e => e.amount > 0).length || 1;
-    const monthlyCost = annualCost / activeMonths;
-    const nkPct       = d.payroll_burden_rate ? Math.round(Number(d.payroll_burden_rate) * 100) : null;
+    const nkPct = d.payroll_burden_rate ? Math.round(Number(d.payroll_burden_rate) * 100) : null;
 
     return `
       <tr class="hc-row">
@@ -98,8 +93,6 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
         <td class="hc-td hc-num">${FMT.format(Math.round(Number(d.annual_gross_salary)))}</td>
         <td class="hc-td hc-num">${d.annual_bonus ? FMT.format(Math.round(Number(d.annual_bonus))) : '—'}</td>
         <td class="hc-td hc-num">${nkPct !== null ? nkPct + ' %' : '—'}</td>
-        <td class="hc-td hc-num hc-cost">${FMT.format(Math.round(monthlyCost))}</td>
-        <td class="hc-td hc-num">${FMT.format(Math.round(annualCost))}</td>
         <td class="hc-td hc-date">${d.start_date ? String(d.start_date).slice(0, 7) : '—'}</td>
         <td class="hc-td hc-date">${d.end_date   ? String(d.end_date).slice(0, 7)   : '—'}</td>
         ${!locked ? `
@@ -118,8 +111,6 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
       <td class="hc-td hc-num">${FMT.format(Math.round(totals.salary))}</td>
       <td class="hc-td hc-num">${FMT.format(Math.round(totals.bonus))}</td>
       <td class="hc-td hc-num">—</td>
-      <td class="hc-td hc-num hc-cost">${FMT.format(Math.round(totals.annualCost / 12))}</td>
-      <td class="hc-td hc-num">${FMT.format(Math.round(totals.annualCost))}</td>
       <td colspan="${2 + (extraCols)}"></td>
     </tr>` : '';
 
@@ -164,14 +155,13 @@ export async function renderPersonnelView(container, lineItems, year, locked, ve
     </div>`;
 }
 
-function _computeTotals(drivers, year) {
-  let salary = 0, bonus = 0, annualCost = 0;
+function _computeTotals(drivers) {
+  let salary = 0, bonus = 0;
   for (const d of drivers) {
-    salary     += Number(d.annual_gross_salary);
-    bonus      += Number(d.annual_bonus || 0);
-    annualCost += spreadPersonnel(d, year).reduce((s, e) => s + e.amount, 0);
+    salary += Number(d.annual_gross_salary);
+    bonus  += Number(d.annual_bonus || 0);
   }
-  return { salary, bonus, annualCost };
+  return { salary, bonus };
 }
 
 // ── Person modal ──────────────────────────────────────────────────────
