@@ -59,6 +59,29 @@ export function aggregateByCategory(lineItems, entries) {
 }
 
 /**
+ * Sum a single category's monthly amounts over an inclusive month range.
+ *
+ * Used for the plan "Gesamt" (YTD/period) column and for the drill-down
+ * line-item totals so both cover exactly the same [fromMonth, upToMonth] range
+ * that the actuals side is summed over. Passing the full [1, 12] range yields
+ * the annual total.
+ *
+ * @param {Record<number,number>} byMonth  { 1..12: amount }
+ * @param {number} fromMonth  1-based, inclusive
+ * @param {number} upToMonth  1-based, inclusive
+ * @returns {number}
+ */
+export function rangeTotal(byMonth, fromMonth, upToMonth) {
+  const from = Math.max(1, Math.min(12, fromMonth || 1));
+  const to   = Math.max(1, Math.min(12, upToMonth || 12));
+  const start = Math.min(from, to);
+  const end   = Math.max(from, to);
+  let sum = 0;
+  for (let m = start; m <= end; m++) sum += byMonth?.[m] || 0;
+  return round2(sum);
+}
+
+/**
  * Compute annual totals for each category from a monthly map.
  *
  * @param {Map<string, Record<number,number>>} monthly

@@ -65,30 +65,51 @@ export function extractActualsFromPeriods(periodPLs) {
 }
 
 /**
- * Extract YTD actuals for a given month range from periodPLs.
- * Returns a single-row comparison (annual totals only).
+ * Extract actuals summed over an inclusive month range [fromMonth, upToMonth].
  *
- * Useful for a YTD summary card at the top of the table.
+ * This is the single source of truth for the "Ist" (actuals) YTD/period totals
+ * shown in the Ist-vs-Plan view. The month range must match exactly the range
+ * used to sum the plan side (see plan-compare.rangeTotal), otherwise the Ist and
+ * Plan columns would cover different periods and every Δ would be meaningless.
+ *
+ * @param {Array<{computed: Record<string,number>}>} periodPLs
+ *   One entry per month (index 0 = January). May be shorter than 12.
+ * @param {number} fromMonth  1-based, inclusive (e.g. 3 = start at March)
+ * @param {number} upToMonth  1-based, inclusive (e.g. 6 = end at June)
+ * @returns {Record<string,number>}  category → range total
+ */
+export function extractActualsForRange(periodPLs, fromMonth, upToMonth) {
+  const from = Math.max(1, Math.min(12, fromMonth || 1));
+  const to   = Math.max(1, Math.min(12, upToMonth || 12));
+  const start = Math.min(from, to);
+  const end   = Math.max(from, to);
+
+  const ytd = {};
+  for (const row of COMPARE_ROWS) ytd[row.key] = 0;
+
+  for (let m = start; m <= end; m++) {
+    const computed = periodPLs[m - 1]?.computed ?? {};
+    for (const [cat, plKey] of Object.entries(CATEGORY_TO_PL_KEY)) {
+      ytd[cat] = round2((ytd[cat] || 0) + (computed[plKey] ?? 0));
+    }
+    // EBITDA is not simply summable — re-derive from accumulated components below.
+  }
+
+  // Re-derive range EBITDA from components (revenue − personnel − opex).
+  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex']);
+  return ytd;
+}
+
+/**
+ * Extract YTD actuals from the start of the year up to (and including) a month.
+ * Thin wrapper over extractActualsForRange with fromMonth pinned to January.
  *
  * @param {Array<{computed: Record<string,number>}>} periodPLs
  * @param {number} upToMonth  1-based, inclusive (e.g. 6 = Jan–Jun)
  * @returns {Record<string,number>}  category → YTD amount
  */
 export function extractActualsYTD(periodPLs, upToMonth) {
-  const ytd = {};
-  for (const row of COMPARE_ROWS) ytd[row.key] = 0;
-
-  for (let i = 0; i < Math.min(periodPLs.length, upToMonth); i++) {
-    const computed = periodPLs[i]?.computed ?? {};
-    for (const [cat, plKey] of Object.entries(CATEGORY_TO_PL_KEY)) {
-      ytd[cat] = round2((ytd[cat] || 0) + (computed[plKey] ?? 0));
-    }
-    // EBITDA is not simply summable — re-derive from accumulated revenue/personnel/opex
-  }
-
-  // Re-derive YTD EBITDA from components
-  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex']);
-  return ytd;
+  return extractActualsForRange(periodPLs, 1, upToMonth);
 }
 
 function round2(n) {

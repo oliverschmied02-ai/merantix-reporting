@@ -15,8 +15,8 @@
 import { APP } from '../state.js';
 import { esc, MONTH_SHORT } from '../lib/utils.js';
 import { getPlanVersions, getPlanLineItems, getPlanEntries } from '../lib/db.js';
-import { aggregateByCategory, compareVersions, COMPARE_ROWS } from '../lib/plan-compare.js';
-import { extractActualsFromPeriods, extractActualsYTD } from '../lib/actuals-compare.js';
+import { aggregateByCategory, compareVersions, rangeTotal, COMPARE_ROWS } from '../lib/plan-compare.js';
+import { extractActualsFromPeriods, extractActualsForRange } from '../lib/actuals-compare.js';
 import { computePLSingle } from '../lib/compute.js';
 import { showToast } from './screen.js';
 
@@ -271,13 +271,12 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
   const rangeLabel  = startMonth === endMonth ? fromLabel : `${fromLabel}–${toLabel}`;
   const ytdActual   = extractActualsForRange(periodPLs, startMonth, endMonth);
 
-  // Build YTD plan totals
+  // Build YTD plan totals over exactly the same range as the actuals side.
   const ytdPlan = {};
   for (const row of rows) {
-    ytdPlan[row.key] = 0;
-    for (let m = startMonth; m <= endMonth; m++) {
-      ytdPlan[row.key] += row.monthly[m]?.b ?? 0;
-    }
+    const planByMonth = {};
+    for (let m = 1; m <= 12; m++) planByMonth[m] = row.monthly[m]?.b ?? 0;
+    ytdPlan[row.key] = rangeTotal(planByMonth, startMonth, endMonth);
   }
 
   // Variance colouring: revenue & EBITDA are "higher is better"; costs are
@@ -398,9 +397,12 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
         <td class="avp-cell avp-drill-cell plan">${v !== 0 ? fmtActual(v) : '<span class="avp-zero">—</span>'}</td>
         <td class="avp-cell avp-drill-cell"></td>`;
     }).join('');
-    const rangeYtd = amounts => Object.entries(amounts)
-      .filter(([m]) => parseInt(m) <= upTo)
-      .reduce((s, [, v]) => s + v, 0);
+    // Sum line-item plan amounts over the SAME [startMonth, endMonth] range as
+    // the parent category total, so the drill-down rows always add up to the
+    // "Gesamt" plan figure shown on the category row (previously this ignored
+    // the "from" month and leaked in earlier months when the range didn't start
+    // in January).
+    const rangeYtd = amounts => rangeTotal(amounts, startMonth, endMonth);
 
     const liDrillRow = li => {
       const a = liEntryMap.get(li.id) || {};
@@ -537,27 +539,3 @@ function computePeriodsForYear(year) {
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
-
-function extractActualsForRange(periodPLs, fromMonth, upToMonth) {
-  const ytd = {};
-  for (const row of COMPARE_ROWS) ytd[row.key] = 0;
-
-  const CATEGORY_TO_PL_KEY = {
-    revenue:      'revenue',
-    personnel:    'personnel',
-    opex:         'opex',
-    depreciation: 'depreciation',
-  };
-
-  for (let m = fromMonth; m <= upToMonth; m++) {
-    const i = m - 1;
-    const computed = periodPLs[i]?.computed ?? {};
-    for (const [cat, plKey] of Object.entries(CATEGORY_TO_PL_KEY)) {
-      ytd[cat] = round2((ytd[cat] || 0) + (computed[plKey] ?? 0));
-    }
-  }
-
-  // Re-derive EBITDA from components
-  ytd['ebitda'] = round2(ytd['revenue'] - ytd['personnel'] - ytd['opex']);
-  return ytd;
-}
