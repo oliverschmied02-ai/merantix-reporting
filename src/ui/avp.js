@@ -30,6 +30,7 @@ let _upToMonth    = 12;    // 1-12, end of range (12 = full year)
 let _lineItems    = [];   // line items for selected plan version
 let _entries      = [];   // entries for selected plan version
 let _expandedRows = new Set();  // category keys that are drilled down
+let _lastExport   = null; // snapshot of the last rendered comparison, for CSV/PDF export
 
 // ── Entry point ───────────────────────────────────────────────────────
 
@@ -167,11 +168,170 @@ export function avpToggleDrilldown(key) {
   renderAvpContent();
 }
 
+// ── CSV / PDF export ──────────────────────────────────────────────────
+
+// Revenue & EBITDA are "higher is better"; costs are "lower is better".
+const higherIsBetter = key => key === 'revenue' || key === 'ebitda';
+
+// Slugify a range label ("Jan–Mär") for use in a filename.
+function safeSlug(s) {
+  return String(s).replace(/[–—]/g, '-').replace(/[^\w-]+/g, '');
+}
+
+/**
+ * Download the current Ist/Plan comparison as CSV — full month-by-month
+ * detail (Ist, Plan, Δ per visible month) plus the range totals. Semicolon-
+ * separated with a UTF-8 BOM and German decimal commas, so it opens cleanly
+ * in Excel with de-DE locale.
+ */
+export function avpExportCSV() {
+  if (!_lastExport) { showToast('Bitte zuerst ein Jahr und eine Planversion wählen.'); return; }
+  const { rows, visibleMonths, ytdActual, ytdPlan, versionLabel, yearLabel, rangeLabel } = _lastExport;
+
+  const csvCell = v => {
+    const s = String(v ?? '');
+    return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const num = v => (!v) ? '0' : (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
+
+  const lines = [];
+  lines.push([`Ist vs. Plan ${yearLabel}`]);
+  lines.push(['Planversion', versionLabel]);
+  lines.push(['Zeitraum', rangeLabel]);
+  lines.push(['Exportiert am', new Date().toLocaleDateString('de-DE')]);
+  lines.push([]);
+
+  const header = ['Position'];
+  for (const m of visibleMonths) {
+    const mo = MONTH_SHORT[m - 1];
+    header.push(`${mo} Ist`, `${mo} Plan`, `${mo} Δ`);
+  }
+  header.push('Gesamt Ist', 'Gesamt Plan', 'Gesamt Δ');
+  lines.push(header);
+
+  for (const row of rows) {
+    const cells = [row.label];
+    for (const m of visibleMonths) {
+      const cell = row.monthly[m] ?? { a: 0, b: 0 };
+      cells.push(num(cell.a), num(cell.b), num(round2(cell.a - cell.b)));
+    }
+    const ytdAct = ytdActual[row.key] ?? 0;
+    const ytdPl  = ytdPlan[row.key]  ?? 0;
+    cells.push(num(ytdAct), num(ytdPl), num(round2(ytdAct - ytdPl)));
+    lines.push(cells);
+  }
+
+  const csv  = lines.map(r => r.map(csvCell).join(';')).join('\r\n');
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `Ist-vs-Plan_${yearLabel}_${safeSlug(rangeLabel)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Open a print-friendly variance report in a new window and trigger the
+ * browser's print dialog (→ "Als PDF speichern"). Shows the range totals:
+ * Position · Ist · Plan · Δ · Δ%, mirroring the on-screen headline view.
+ * Month-by-month detail lives in the CSV export.
+ */
+export function avpExportPrint() {
+  if (!_lastExport) { showToast('Bitte zuerst ein Jahr und eine Planversion wählen.'); return; }
+  const { rows, ytdActual, ytdPlan, hasActuals, versionLabel, yearLabel, rangeLabel } = _lastExport;
+
+  const fmtN = v => (!v) ? '—'
+    : new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(v));
+  const fmtD = v => {
+    if (!v) return '—';
+    const abs = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.abs(Math.round(v)));
+    return (v > 0 ? '+' : '−') + abs;
+  };
+
+  const bodyRows = rows.map(row => {
+    const act  = ytdActual[row.key] ?? 0;
+    const plan = ytdPlan[row.key]   ?? 0;
+    const d    = round2(act - plan);
+    const pct  = plan !== 0 ? ((d / Math.abs(plan)) * 100).toFixed(1) : null;
+    const cls  = !hasActuals || d === 0 ? 'zero'
+      : higherIsBetter(row.key) ? (d > 0 ? 'good' : 'bad') : (d < 0 ? 'good' : 'bad');
+    return `<tr class="${row.computed ? 'row-ebitda' : 'row-cat'}">
+      <td class="pos">${esc(row.label)}</td>
+      <td class="num">${fmtN(act)}</td>
+      <td class="num">${fmtN(plan)}</td>
+      <td class="num ${cls}">${fmtD(d)}</td>
+      <td class="num ${cls}">${pct !== null ? (d >= 0 ? '+' : '') + pct + ' %' : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  const exportDate = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  const html = `<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Ist vs. Plan ${esc(yearLabel)}</title>
+<style>
+  @page { size: A4 portrait; margin: 18mm 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 9pt; color: #1e2433; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8mm; }
+  .header h1 { font-size: 15pt; font-weight: 700; }
+  .header .sub { font-size: 9pt; color: #4b5563; margin-top: 3px; }
+  .header .meta { font-size: 8pt; color: #6b7280; text-align: right; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: #1e2433; color: #fff; font-size: 8pt; font-weight: 600; text-align: right; padding: 5px 8px; white-space: nowrap; }
+  th:first-child { text-align: left; }
+  td { padding: 4px 8px; border-bottom: 1px solid #f0f2f8; }
+  td.pos { text-align: left; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .row-cat td { font-weight: 500; }
+  .row-ebitda td { font-weight: 700; background: #eef1ff; }
+  .num.good { color: #158a4a; }
+  .num.bad  { color: #c8362f; }
+  .num.zero { color: #9aa3b2; }
+  .foot { margin-top: 6mm; font-size: 7.5pt; color: #6b7280; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>Ist vs. Plan ${esc(yearLabel)}</h1>
+    <div class="sub">Plan: ${esc(versionLabel)} · Zeitraum: ${esc(rangeLabel)}</div>
+  </div>
+  <div class="meta">Exportiert am ${exportDate}<br>Alle Beträge in EUR</div>
+</div>
+<table>
+  <thead><tr>
+    <th style="min-width:160px">Position</th>
+    <th>Ist (${esc(rangeLabel)})</th>
+    <th>Plan (${esc(rangeLabel)})</th>
+    <th>Δ</th>
+    <th>Δ %</th>
+  </tr></thead>
+  <tbody>${bodyRows}</tbody>
+</table>
+<div class="foot">Δ = Ist − Plan · grün = über Plan (Umsatz/EBITDA) bzw. unter Plan (Kosten)${!hasActuals ? ' · Für diesen Zeitraum sind noch keine Ist-Buchungen erfasst.' : ''}</div>
+</body>
+</html>`;
+
+  const w = window.open('', '_blank', 'width=900,height=700');
+  if (!w) { showToast('Popup blockiert — bitte Popups für diese Seite erlauben.'); return; }
+  w.document.write(html);
+  w.document.close();
+  w.onload = () => w.print();
+}
+
 // ── Main render ───────────────────────────────────────────────────────
 
 async function renderAvpContent() {
   const el = document.getElementById('avp-content');
   if (!el) return;
+
+  // Any early return below means there is no full Ist/Plan table to export.
+  _lastExport = null;
 
   if (!_selYear) {
     el.innerHTML = `<div class="plan-empty">Kein Jahr ausgewählt. Bitte GDPdU-Datei laden.</div>`;
@@ -264,7 +424,8 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
   const endMonth = Math.max(fm, ut);
 
   const version   = _versions.find(v => v.id === _selVersion);
-  const versionName = esc(version ? `${version.name} (${TYPE_LABEL[version.type] ?? version.type})` : 'Plan');
+  const versionLabelRaw = version ? `${version.name} (${TYPE_LABEL[version.type] ?? version.type})` : 'Plan';
+  const versionName = esc(versionLabelRaw);
   const yearLabel   = _selYear ?? '';
   const fromLabel   = MONTH_SHORT[startMonth - 1] || 'Jan';
   const toLabel     = MONTH_SHORT[endMonth - 1] || 'Dez';
@@ -461,6 +622,13 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
 
     return [mainRow, ...catItems.map(liDrillRow)];
   }).join('');
+
+  // Snapshot everything the CSV/PDF export needs to reproduce this exact view.
+  _lastExport = {
+    rows, visibleMonths, startMonth, endMonth,
+    ytdActual, ytdPlan, hasActuals,
+    versionLabel: versionLabelRaw, yearLabel: String(yearLabel), rangeLabel,
+  };
 
   return `
     <div class="avp-wrap">
