@@ -179,20 +179,113 @@ function safeSlug(s) {
 }
 
 /**
+ * Build a flat, structured list of display rows mirroring the on-screen table
+ * — category rows (with Ist/Plan per month) plus the drill-down detail rows
+ * (plan-only) for whichever categories are currently expanded. Shared by the
+ * CSV and PDF exports so both reproduce exactly what the user sees.
+ *
+ * Each row: { style: 'cat'|'ebitda'|'group'|'item', label, indent, planOnly,
+ *             key?, monthly: {m:{a?,b}}, ytd: {a?,b} }
+ */
+function buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan) {
+  const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
+
+  const liEntryMap = new Map();
+  for (const e of _entries) {
+    if (!liEntryMap.has(e.line_item_id)) liEntryMap.set(e.line_item_id, {});
+    liEntryMap.get(e.line_item_id)[e.month] = Number(e.amount);
+  }
+  const rangeYtd = amounts => {
+    let s = 0;
+    for (let m = startMonth; m <= endMonth; m++) s += amounts[m] ?? 0;
+    return s;
+  };
+  const monthlyPlan = amounts => {
+    const out = {};
+    for (const m of visibleMonths) out[m] = { b: amounts[m] ?? 0 };
+    return out;
+  };
+
+  const out = [];
+  for (const row of rows) {
+    const monthly = {};
+    for (const m of visibleMonths) {
+      const c = row.monthly[m] ?? { a: 0, b: 0 };
+      monthly[m] = { a: c.a, b: c.b };
+    }
+    out.push({
+      style: row.computed ? 'ebitda' : 'cat', key: row.key, label: row.label,
+      indent: 0, planOnly: false, monthly,
+      ytd: { a: ytdActual[row.key] ?? 0, b: ytdPlan[row.key] ?? 0 },
+    });
+
+    if (!drillableKeys.has(row.key) || !_expandedRows.has(row.key)) continue;
+    const catItems = _lineItems.filter(li => li.category === row.key);
+    if (!catItems.length) continue;
+
+    if (row.key === 'opex') {
+      // Preserve the sBA sub-category grouping (Fremdleistungen, Events …).
+      const opexDef  = APP.plDef.find(s => s.id === 'opex');
+      const subs     = opexDef?.subs ?? [];
+      const subLabel = new Map(subs.map(s => [s.id, s.label]));
+      const byItem   = new Map();
+      for (const li of catItems) {
+        const k = subLabel.has(li.item_id) ? li.item_id : '_other';
+        if (!byItem.has(k)) byItem.set(k, []);
+        byItem.get(k).push(li);
+      }
+      const orderedKeys = [
+        ...subs.map(s => s.id).filter(k => byItem.has(k)),
+        ...(byItem.has('_other') ? ['_other'] : []),
+      ];
+      for (const k of orderedKeys) {
+        const lis = byItem.get(k);
+        const groupAmounts = {};
+        for (const li of lis) {
+          const a = liEntryMap.get(li.id) || {};
+          for (const [m, v] of Object.entries(a)) groupAmounts[m] = (groupAmounts[m] || 0) + v;
+        }
+        out.push({
+          style: 'group', label: subLabel.get(k) || 'Sonstiges', indent: 1, planOnly: true,
+          monthly: monthlyPlan(groupAmounts), ytd: { b: rangeYtd(groupAmounts) },
+        });
+        for (const li of lis) {
+          const a = liEntryMap.get(li.id) || {};
+          out.push({
+            style: 'item', label: li.label + (li.entity ? ` (${li.entity})` : ''), indent: 2, planOnly: true,
+            monthly: monthlyPlan(a), ytd: { b: rangeYtd(a) },
+          });
+        }
+      }
+    } else {
+      for (const li of catItems) {
+        const a = liEntryMap.get(li.id) || {};
+        out.push({
+          style: 'item', label: li.label + (li.entity ? ` (${li.entity})` : ''), indent: 1, planOnly: true,
+          monthly: monthlyPlan(a), ytd: { b: rangeYtd(a) },
+        });
+      }
+    }
+  }
+  return out;
+}
+
+/**
  * Download the current Ist/Plan comparison as CSV — full month-by-month
- * detail (Ist, Plan, Δ per visible month) plus the range totals. Semicolon-
- * separated with a UTF-8 BOM and German decimal commas, so it opens cleanly
- * in Excel with de-DE locale.
+ * detail (Ist, Plan, Δ per visible month) plus the range totals, including
+ * the expanded drill-down detail rows (plan-only). Semicolon-separated with a
+ * UTF-8 BOM and German decimal commas, so it opens cleanly in Excel (de-DE).
  */
 export function avpExportCSV() {
   if (!_lastExport) { showToast('Bitte zuerst ein Jahr und eine Planversion wählen.'); return; }
-  const { rows, visibleMonths, ytdActual, ytdPlan, versionLabel, yearLabel, rangeLabel } = _lastExport;
+  const { exportRows, visibleMonths, versionLabel, yearLabel, rangeLabel } = _lastExport;
 
   const csvCell = v => {
     const s = String(v ?? '');
     return /[;"\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   };
-  const num = v => (!v) ? '0' : (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
+  const num   = v => (!v) ? '0' : (Math.round(v * 100) / 100).toFixed(2).replace('.', ',');
+  const blank = '';
 
   const lines = [];
   lines.push([`Ist vs. Plan ${yearLabel}`]);
@@ -209,15 +302,16 @@ export function avpExportCSV() {
   header.push('Gesamt Ist', 'Gesamt Plan', 'Gesamt Δ');
   lines.push(header);
 
-  for (const row of rows) {
-    const cells = [row.label];
+  for (const row of exportRows) {
+    const indent = '  '.repeat(row.indent);
+    const cells = [indent + row.label];
     for (const m of visibleMonths) {
-      const cell = row.monthly[m] ?? { a: 0, b: 0 };
-      cells.push(num(cell.a), num(cell.b), num(round2(cell.a - cell.b)));
+      const c = row.monthly[m] ?? {};
+      if (row.planOnly) cells.push(blank, num(c.b), blank);
+      else cells.push(num(c.a), num(c.b), num(round2((c.a ?? 0) - (c.b ?? 0))));
     }
-    const ytdAct = ytdActual[row.key] ?? 0;
-    const ytdPl  = ytdPlan[row.key]  ?? 0;
-    cells.push(num(ytdAct), num(ytdPl), num(round2(ytdAct - ytdPl)));
+    if (row.planOnly) cells.push(blank, num(row.ytd.b), blank);
+    else cells.push(num(row.ytd.a), num(row.ytd.b), num(round2((row.ytd.a ?? 0) - (row.ytd.b ?? 0))));
     lines.push(cells);
   }
 
@@ -232,38 +326,61 @@ export function avpExportCSV() {
 }
 
 /**
- * Open a print-friendly variance report in a new window and trigger the
- * browser's print dialog (→ "Als PDF speichern"). Shows the range totals:
- * Position · Ist · Plan · Δ · Δ%, mirroring the on-screen headline view.
- * Month-by-month detail lives in the CSV export.
+ * Open a print-friendly report in a new window and trigger the browser's print
+ * dialog (→ "Als PDF speichern"). Mirrors the on-screen table: per-month
+ * Ist/Plan/Δ columns plus the range totals, and the expanded drill-down rows.
+ * Landscape; font/columns scale down as more months are shown.
  */
 export function avpExportPrint() {
   if (!_lastExport) { showToast('Bitte zuerst ein Jahr und eine Planversion wählen.'); return; }
-  const { rows, ytdActual, ytdPlan, hasActuals, versionLabel, yearLabel, rangeLabel } = _lastExport;
+  const { exportRows, visibleMonths, hasActuals, versionLabel, yearLabel, rangeLabel } = _lastExport;
 
   const fmtN = v => (!v) ? '—'
-    : new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(Math.round(v));
+    : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(v));
   const fmtD = v => {
     if (!v) return '—';
     const abs = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.abs(Math.round(v)));
     return (v > 0 ? '+' : '−') + abs;
   };
 
-  const bodyRows = rows.map(row => {
-    const act  = ytdActual[row.key] ?? 0;
-    const plan = ytdPlan[row.key]   ?? 0;
-    const d    = round2(act - plan);
-    const pct  = plan !== 0 ? ((d / Math.abs(plan)) * 100).toFixed(1) : null;
-    const cls  = !hasActuals || d === 0 ? 'zero'
-      : higherIsBetter(row.key) ? (d > 0 ? 'good' : 'bad') : (d < 0 ? 'good' : 'bad');
-    return `<tr class="${row.computed ? 'row-ebitda' : 'row-cat'}">
-      <td class="pos">${esc(row.label)}</td>
-      <td class="num">${fmtN(act)}</td>
-      <td class="num">${fmtN(plan)}</td>
-      <td class="num ${cls}">${fmtD(d)}</td>
-      <td class="num ${cls}">${pct !== null ? (d >= 0 ? '+' : '') + pct + ' %' : '—'}</td>
-    </tr>`;
+  const n = visibleMonths.length;
+  // Scale down type/padding as month count grows so it stays on one page width.
+  const fs   = n <= 6 ? 7 : n <= 9 ? 6 : 5.4;
+  const pad  = n <= 6 ? '3px 5px' : n <= 9 ? '2px 4px' : '1.5px 3px';
+  const posW = n <= 6 ? 150 : n <= 9 ? 120 : 100;
+
+  const deltaClass = (key, d) => !hasActuals || d === 0 ? 'zero'
+    : higherIsBetter(key) ? (d > 0 ? 'good' : 'bad') : (d < 0 ? 'good' : 'bad');
+
+  const numTd = (v, extra = '') => `<td class="num ${extra}">${fmtN(v)}</td>`;
+  const monthCells = row => visibleMonths.map((m, i) => {
+    const c   = row.monthly[m] ?? {};
+    const sep = i === 0 ? '' : ' grp';
+    if (row.planOnly) {
+      return `<td class="num${sep}"></td>${numTd(c.b, 'plan')}<td class="num"></td>`;
+    }
+    const d = round2((c.a ?? 0) - (c.b ?? 0));
+    return `${numTd(c.a, 'ist' + sep)}${numTd(c.b, 'plan')}<td class="num delta ${deltaClass(row.key, d)}">${fmtD(d)}</td>`;
   }).join('');
+
+  const totalCells = row => {
+    if (row.planOnly) return `<td class="num ytd grp"></td>${numTd(row.ytd.b, 'plan ytd')}<td class="num ytd"></td>`;
+    const d = round2((row.ytd.a ?? 0) - (row.ytd.b ?? 0));
+    return `${numTd(row.ytd.a, 'ist ytd grp')}${numTd(row.ytd.b, 'plan ytd')}<td class="num delta ytd ${deltaClass(row.key, d)}">${fmtD(d)}</td>`;
+  };
+
+  const bodyRows = exportRows.map(row => `
+    <tr class="row-${row.style} ind-${row.indent}">
+      <td class="pos">${esc(row.label)}</td>
+      ${monthCells(row)}${totalCells(row)}
+    </tr>`).join('');
+
+  const monthHead = visibleMonths.map((m, i) =>
+    `<th colspan="3" class="mhead${i === 0 ? '' : ' grp'}">${MONTH_SHORT[m - 1]}</th>`
+  ).join('') + `<th colspan="3" class="mhead ytdhead grp">Gesamt ${esc(rangeLabel)}</th>`;
+  const subHead = visibleMonths.map((_, i) =>
+    `<th class="sub${i === 0 ? '' : ' grp'}">Ist</th><th class="sub">Plan</th><th class="sub">Δ</th>`
+  ).join('') + `<th class="sub grp">Ist</th><th class="sub">Plan</th><th class="sub">Δ</th>`;
 
   const exportDate = new Date().toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
@@ -273,25 +390,35 @@ export function avpExportPrint() {
 <meta charset="utf-8">
 <title>Ist vs. Plan ${esc(yearLabel)}</title>
 <style>
-  @page { size: A4 portrait; margin: 18mm 15mm; }
+  @page { size: A4 landscape; margin: 10mm 8mm; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, sans-serif; font-size: 9pt; color: #1e2433; }
-  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8mm; }
-  .header h1 { font-size: 15pt; font-weight: 700; }
-  .header .sub { font-size: 9pt; color: #4b5563; margin-top: 3px; }
-  .header .meta { font-size: 8pt; color: #6b7280; text-align: right; line-height: 1.6; }
-  table { width: 100%; border-collapse: collapse; }
-  th { background: #1e2433; color: #fff; font-size: 8pt; font-weight: 600; text-align: right; padding: 5px 8px; white-space: nowrap; }
-  th:first-child { text-align: left; }
-  td { padding: 4px 8px; border-bottom: 1px solid #f0f2f8; }
-  td.pos { text-align: left; }
+  body { font-family: Arial, sans-serif; font-size: ${fs}pt; color: #1e2433; }
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 5mm; }
+  .header h1 { font-size: 13pt; font-weight: 700; }
+  .header .sub { font-size: 8pt; color: #4b5563; margin-top: 3px; }
+  .header .meta { font-size: 7.5pt; color: #6b7280; text-align: right; line-height: 1.6; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #1e2433; color: #fff; font-weight: 600; text-align: right; padding: ${pad}; white-space: nowrap; }
+  th.mhead { text-align: center; font-size: ${fs}pt; }
+  th.mhead.grp { border-left: 2px solid #3a4a6a; }
+  th.ytdhead { background: #2d3a5a; }
+  th.sub { font-size: ${fs - 0.6}pt; font-weight: 500; color: #c9d2e6; padding: 1px 3px; }
+  th.sub.grp { border-left: 2px solid #566; }
+  td { padding: ${pad}; border-bottom: 1px solid #eef1f6; overflow: hidden; text-overflow: ellipsis; }
+  td.pos { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .row-cat td { font-weight: 500; }
+  td.plan { color: #4f5bd5; }
+  td.grp { border-left: 1px solid #e3e7f0; }
+  td.ytd { background: #f4f6fb; }
+  td.delta.good { color: #158a4a; }
+  td.delta.bad  { color: #c8362f; }
+  td.delta.zero { color: #9aa3b2; }
+  .row-cat td { font-weight: 600; background: #f8f9fd; }
   .row-ebitda td { font-weight: 700; background: #eef1ff; }
-  .num.good { color: #158a4a; }
-  .num.bad  { color: #c8362f; }
-  .num.zero { color: #9aa3b2; }
-  .foot { margin-top: 6mm; font-size: 7.5pt; color: #6b7280; }
+  .row-group td.pos { font-weight: 600; padding-left: 14px; }
+  .row-item td.pos { color: #4b5563; padding-left: 26px; }
+  .row-item td.plan, .row-group td.plan { color: #6b73c9; }
+  .foot { margin-top: 4mm; font-size: 7pt; color: #6b7280; }
   @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
 </style>
 </head>
@@ -304,20 +431,18 @@ export function avpExportPrint() {
   <div class="meta">Exportiert am ${exportDate}<br>Alle Beträge in EUR</div>
 </div>
 <table>
-  <thead><tr>
-    <th style="min-width:160px">Position</th>
-    <th>Ist (${esc(rangeLabel)})</th>
-    <th>Plan (${esc(rangeLabel)})</th>
-    <th>Δ</th>
-    <th>Δ %</th>
-  </tr></thead>
+  <colgroup><col style="width:${posW}px"></colgroup>
+  <thead>
+    <tr><th rowspan="2" style="text-align:left">Position</th>${monthHead}</tr>
+    <tr>${subHead}</tr>
+  </thead>
   <tbody>${bodyRows}</tbody>
 </table>
-<div class="foot">Δ = Ist − Plan · grün = über Plan (Umsatz/EBITDA) bzw. unter Plan (Kosten)${!hasActuals ? ' · Für diesen Zeitraum sind noch keine Ist-Buchungen erfasst.' : ''}</div>
+<div class="foot">Δ = Ist − Plan · grün = über Plan (Umsatz/EBITDA) bzw. unter Plan (Kosten) · Detailzeilen zeigen nur Planwerte${!hasActuals ? ' · Für diesen Zeitraum sind noch keine Ist-Buchungen erfasst.' : ''}</div>
 </body>
 </html>`;
 
-  const w = window.open('', '_blank', 'width=900,height=700');
+  const w = window.open('', '_blank', 'width=1200,height=800');
   if (!w) { showToast('Popup blockiert — bitte Popups für diese Seite erlauben.'); return; }
   w.document.write(html);
   w.document.close();
@@ -559,9 +684,11 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
         <td class="avp-cell avp-drill-cell plan">${v !== 0 ? fmtActual(v) : '<span class="avp-zero">—</span>'}</td>
         <td class="avp-cell avp-drill-cell"></td>`;
     }).join('');
-    const rangeYtd = amounts => Object.entries(amounts)
-      .filter(([m]) => parseInt(m) <= upTo)
-      .reduce((s, [, v]) => s + v, 0);
+    const rangeYtd = amounts => {
+      let s = 0;
+      for (let m = startMonth; m <= endMonth; m++) s += amounts[m] ?? 0;
+      return s;
+    };
 
     const liDrillRow = li => {
       const a = liEntryMap.get(li.id) || {};
@@ -623,10 +750,11 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
     return [mainRow, ...catItems.map(liDrillRow)];
   }).join('');
 
-  // Snapshot everything the CSV/PDF export needs to reproduce this exact view.
+  // Snapshot everything the CSV/PDF export needs to reproduce this exact view,
+  // including the drill-down detail rows for whichever categories are expanded.
   _lastExport = {
-    rows, visibleMonths, startMonth, endMonth,
-    ytdActual, ytdPlan, hasActuals,
+    exportRows: buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan),
+    visibleMonths, startMonth, endMonth, hasActuals,
     versionLabel: versionLabelRaw, yearLabel: String(yearLabel), rangeLabel,
   };
 
