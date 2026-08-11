@@ -144,7 +144,7 @@
     </div>
 
     <!-- ═══ APP SHELL ═══ -->
-    <div id="app-shell" style="display:none">
+    <div id="app-shell" class="sb-collapsed" style="display:none">
       <!-- Sidebar -->
       <nav id="sidebar">
         <div class="sb-header">
@@ -152,12 +152,12 @@
             <span class="app-logo-badge" style="font-size:.8rem;padding:.15rem .45rem">P&amp;L</span>
             <span class="sb-logo-text">Analyzer</span>
           </div>
-          <button class="sb-collapse-btn" data-act="toggleSidebar" title="Sidebar ein-/ausklappen">◀</button>
+          <button class="sb-collapse-btn" data-act="toggleSidebar" title="Sidebar ein-/ausklappen">▶</button>
         </div>
         <div class="sb-nav">
           <button class="sb-nav-item active" id="nav-pl" data-act="setMainView" data-act-args="[&quot;pl-screen&quot;]">
             <span class="sb-nav-icon">📊</span>
-            <span class="sb-nav-label">P&amp;L Statement</span>
+            <span class="sb-nav-label">Gewinn- und Verlustrechnung</span>
           </button>
           <button class="sb-nav-item" id="nav-plan" data-act="setMainView" data-act-args="[&quot;plan-screen&quot;]">
             <span class="sb-nav-icon">📋</span>
@@ -165,7 +165,7 @@
           </button>
           <button class="sb-nav-item" id="nav-avp" data-act="setMainView" data-act-args="[&quot;avp-screen&quot;]">
             <span class="sb-nav-icon">⚡</span>
-            <span class="sb-nav-label">Ist vs. Plan</span>
+            <span class="sb-nav-label">Plan-Ist-Vergleich</span>
           </button>
           <button class="sb-nav-item" id="nav-files" data-act="setMainView" data-act-args="[&quot;files-screen&quot;]">
             <span class="sb-nav-icon">🗂</span>
@@ -553,7 +553,7 @@
         <div id="avp-screen" style="display:none;flex:1;min-height:0;flex-direction:column">
           <div class="top-bar">
             <div>
-              <div class="top-title">Ist vs. Plan</div>
+              <div class="top-title">Plan-Ist-Vergleich</div>
               <div class="top-company" id="avp-top-sub">Abweichungsanalyse</div>
             </div>
             <div class="top-sep"></div>
@@ -565,11 +565,11 @@
             <select id="avp-month-from-sel" class="ctrl" data-change="avpChangeMonthFrom"></select>
             <span class="lbl">bis</span>
             <select id="avp-month-to-sel" class="ctrl" data-change="avpChangeMonthTo"></select>
-            <button class="btn-export" data-act="avpExportCSV" title="Ist vs. Plan als CSV exportieren">
+            <button class="btn-export" data-act="avpExportCSV" title="Plan-Ist-Vergleich als CSV exportieren">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               CSV
             </button>
-            <button class="btn-export" data-act="avpExportPrint" title="Ist vs. Plan als PDF exportieren">
+            <button class="btn-export" data-act="avpExportPrint" title="Plan-Ist-Vergleich als PDF exportieren">
               <svg width="13" height="13" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M8 2v8m0 0L5 7m3 3 3-3M3 13h10" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               PDF
             </button>

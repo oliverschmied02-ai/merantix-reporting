@@ -1406,6 +1406,29 @@ textarea.plan-input { resize: vertical; }
 .avp-kpi-delta.bad  { color: var(--c-danger); }
 .avp-kpi-delta.zero { color: var(--c-text-faint); }
 
+/* Ist / Plan columns inside a KPI tile — clearly labelled, side by side. */
+.avp-kpi-cols   { display: flex; gap: 1rem; align-items: flex-end; }
+.avp-kpi-col    { display: flex; flex-direction: column; gap: .1rem; }
+.avp-kpi-col + .avp-kpi-col { padding-left: 1rem; border-left: 1px solid var(--c-border-soft); }
+.avp-kpi-cap    { font-size: .6rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--c-text-faint); }
+.avp-kpi-col:first-child .avp-kpi-cap { color: var(--c-primary); }
+.avp-kpi-col:last-child  .avp-kpi-cap { color: var(--c-accent); }
+.avp-kpi-planval { font-size: 1.05rem; font-weight: 700; color: var(--c-accent); line-height: 1.1; font-variant-numeric: tabular-nums; }
+.avp-kpi-deltacap { font-size: .68rem; font-weight: 600; color: var(--c-text-faint); text-transform: uppercase; letter-spacing: .03em; }
+
+/* Prominent badge showing the selected month range. */
+.avp-range-badge {
+  display: inline-block; font-weight: 700; font-size: .72rem;
+  color: var(--c-primary); background: var(--c-surface-3);
+  border: 1px solid #c7d2fe; border-radius: 999px; padding: .1rem .55rem;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Informational (non-warning) variant of the hint box. */
+.avp-hint-info {
+  background: rgba(79,110,247,.05); border-color: rgba(79,110,247,.18);
+}
+
 /* Info hint when no actuals exist for the selected year */
 .avp-hint {
   background: rgba(79,110,247,.06); border: 1px solid rgba(79,110,247,.2);
@@ -1463,9 +1486,14 @@ textarea.plan-input { resize: vertical; }
   z-index: 2;
 }
 
+/* Subtle, non-flashy column grouping so Ist / Plan / Δ read clearly at a
+   glance: Ist starts each month block with a divider, Plan sits on a faint
+   tint, Δ is bold. Kept light so line-item rows stay the visual focus. */
 .avp-cell.ist   { color: var(--c-primary); border-left: 1px solid var(--c-border-soft); }
-.avp-cell.plan  { color: var(--c-accent); }
-.avp-cell.delta { font-weight: 700; }
+.avp-cell.plan  { color: var(--c-accent); background: rgba(99,102,241,.035); }
+.avp-cell.delta { font-weight: 700; background: rgba(100,116,139,.04); }
+.avp-sub.plan   { background: rgba(99,102,241,.05); }
+.avp-sub.delta  { background: rgba(100,116,139,.05); }
 /* Gesamt (YTD) group: subtle background tint on all three cells, and a single
    divider on the group's left edge (.avp-ytd-sep) — not one line per cell. */
 .avp-ytd        { background: #fafbff; }

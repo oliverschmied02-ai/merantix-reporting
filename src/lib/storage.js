@@ -73,12 +73,21 @@ export function saveRules() {
   import('../ui/pl-table.js').then(m => m.buildPL());
 }
 
-export const KPI_DEFAULT_ORDER = ['revenue', 'ebitda', 'ebit', 'ebt', 'personnel'];
+export const KPI_DEFAULT_ORDER = ['revenue', 'ebitda', 'ebit', 'personnel', 'opex'];
 
 export function loadKpiOrder() {
   try {
     const s = localStorage.getItem('gdpdu_kpi_order');
-    if (s) return JSON.parse(s);
+    if (s) {
+      const saved = JSON.parse(s);
+      // Reconcile a persisted order with the current KPI set: drop keys that no
+      // longer exist (e.g. the removed EBT tile) and append newly added ones
+      // (e.g. the sBA tile), so existing users still see the current defaults.
+      const allowed = new Set(KPI_DEFAULT_ORDER);
+      const merged = saved.filter(k => allowed.has(k));
+      for (const k of KPI_DEFAULT_ORDER) if (!merged.includes(k)) merged.push(k);
+      return merged;
+    }
   } catch {}
   return [...KPI_DEFAULT_ORDER];
 }

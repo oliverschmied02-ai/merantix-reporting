@@ -498,7 +498,14 @@ async function renderAvpContent() {
     const planMonthly = aggregateByCategory(lineItems, entries);
     const rows        = compareVersions(actualMonthly, planMonthly);
 
-    el.innerHTML = renderTable(rows, periodPLs, _fromMonth, _upToMonth);
+    // If the business plan does not start in January, treat "Plan = Ist" for the
+    // months before it begins: no plan was made there, so any deviation would be
+    // spurious. This propagates automatically into the KPI tiles and the range
+    // totals, which are derived from these monthly plan values.
+    const planStartMonth = firstPlannedMonth(entries);
+    if (planStartMonth > 1) applyPlanEqualsActualBefore(rows, planStartMonth);
+
+    el.innerHTML = renderTable(rows, periodPLs, _fromMonth, _upToMonth, planStartMonth);
   } catch (e) {
     el.innerHTML = `<div class="plan-error">Fehler: ${esc(e.message)}</div>`;
     showToast('Fehler: ' + e.message);
@@ -541,7 +548,7 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
     </div>`;
 }
 
-function renderTable(rows, periodPLs, fromMonth, upTo) {
+function renderTable(rows, periodPLs, fromMonth, upTo, planStartMonth = 1) {
   // Sanitize inputs
   const fm = Math.max(1, Math.min(12, fromMonth || 1));
   const ut = Math.max(1, Math.min(12, upTo || 12));
@@ -590,9 +597,18 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
     return `
       <div class="avp-kpi ${r.computed ? 'avp-kpi-ebitda' : ''}">
         <div class="avp-kpi-label">${esc(r.label)}</div>
-        <div class="avp-kpi-val">${act !== 0 ? fmtActual(act) : '<span class="avp-kpi-empty">—</span>'}</div>
+        <div class="avp-kpi-cols">
+          <div class="avp-kpi-col">
+            <div class="avp-kpi-cap">Ist</div>
+            <div class="avp-kpi-val">${act !== 0 ? fmtActual(act) : '<span class="avp-kpi-empty">—</span>'}</div>
+          </div>
+          <div class="avp-kpi-col">
+            <div class="avp-kpi-cap">Plan</div>
+            <div class="avp-kpi-planval">${fmtActual(plan)}</div>
+          </div>
+        </div>
         <div class="avp-kpi-foot">
-          <span class="avp-kpi-plan">Plan ${fmtActual(plan)}</span>
+          <span class="avp-kpi-deltacap">Δ Ist − Plan</span>
           <span class="avp-kpi-delta ${cls}">${delta > 0 ? '+' : ''}${fmtActual(delta)}${pct !== null ? ` · ${pct} %` : ''}</span>
         </div>
       </div>`;
@@ -765,9 +781,12 @@ function renderTable(rows, periodPLs, fromMonth, upTo) {
         <span class="avp-meta-sep">·</span>
         <span class="avp-meta-plan">Plan: ${versionName}</span>
         <span class="avp-meta-sep">·</span>
-        <span class="avp-meta-period">Zeitraum: ${rangeLabel}</span>
+        <span class="avp-meta-period">Zeitraum</span>
+        <span class="avp-range-badge">${rangeLabel}</span>
         <span class="avp-meta-note">Δ = Ist − Plan · grün = über Plan (Umsatz) / unter Plan (Kosten)</span>
       </div>
+
+      ${planStartMonth > 1 ? `<div class="avp-hint avp-hint-info">Die Planung beginnt erst im ${MONTH_SHORT[planStartMonth - 1]} — für die Monate davor wird Plan = Ist angenommen (Δ = 0).</div>` : ''}
 
       ${!hasActuals ? `<div class="avp-hint">Für ${yearLabel} sind noch keine Ist-Buchungen erfasst — es werden nur die Planwerte angezeigt.</div>` : ''}
 
@@ -833,6 +852,34 @@ function computePeriodsForYear(year) {
 }
 
 function round2(n) { return Math.round(n * 100) / 100; }
+
+/**
+ * The first month (1-12) that carries any plan entry, or 1 if the plan is
+ * empty. Used to detect a plan that starts later than January.
+ */
+function firstPlannedMonth(entries) {
+  const months = entries
+    .map(e => Number(e.month))
+    .filter(m => m >= 1 && m <= 12);
+  return months.length ? Math.min(...months) : 1;
+}
+
+/**
+ * For every month strictly before `startMonth`, overwrite the plan value with
+ * the actual value so the delta is zero (Plan = Ist). Mutates the comparison
+ * rows in place; all downstream aggregations read from these values.
+ */
+function applyPlanEqualsActualBefore(rows, startMonth) {
+  for (const row of rows) {
+    for (let m = 1; m < startMonth; m++) {
+      const cell = row.monthly[m];
+      if (!cell) continue;
+      cell.b     = cell.a;
+      cell.delta = 0;
+      cell.pct   = cell.a === 0 ? null : 0;
+    }
+  }
+}
 
 function extractActualsForRange(periodPLs, fromMonth, upToMonth) {
   const ytd = {};

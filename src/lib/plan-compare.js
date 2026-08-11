@@ -16,7 +16,7 @@
 export const COMPARE_ROWS = [
   { key: 'revenue',      label: 'Umsatz',          sign: +1 },
   { key: 'personnel',    label: 'Personalaufwand',  sign: -1 },
-  { key: 'opex',         label: 'OpEx',             sign: -1 },
+  { key: 'opex',         label: 'sBA',              sign: -1 },
   { key: 'ebitda',       label: 'EBITDA',           sign: null, computed: true },
   { key: 'depreciation', label: 'Abschreibungen',   sign: -1 },
 ];
