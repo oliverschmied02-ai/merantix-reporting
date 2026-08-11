@@ -498,14 +498,14 @@ async function renderAvpContent() {
     const planMonthly = aggregateByCategory(lineItems, entries);
     const rows        = compareVersions(actualMonthly, planMonthly);
 
-    // If the business plan does not start in January, treat "Plan = Ist" for the
-    // months before it begins: no plan was made there, so any deviation would be
-    // spurious. This propagates automatically into the KPI tiles and the range
-    // totals, which are derived from these monthly plan values.
-    const planStartMonth = firstPlannedMonth(entries);
-    if (planStartMonth > 1) applyPlanEqualsActualBefore(rows, planStartMonth);
+    // Any month the plan does not cover (no plan figures at all — e.g. the plan
+    // starts later than January, or the version is still empty) is treated as
+    // "Plan = Ist", so the deviation there is zero instead of the full actual.
+    // This propagates automatically into the KPI tiles and the range totals,
+    // which are derived from these monthly plan values.
+    const unplannedMonths = applyPlanEqualsActualForUnplanned(rows);
 
-    el.innerHTML = renderTable(rows, periodPLs, _fromMonth, _upToMonth, planStartMonth);
+    el.innerHTML = renderTable(rows, periodPLs, _fromMonth, _upToMonth, unplannedMonths);
   } catch (e) {
     el.innerHTML = `<div class="plan-error">Fehler: ${esc(e.message)}</div>`;
     showToast('Fehler: ' + e.message);
@@ -548,7 +548,7 @@ function renderActualsOnly(el, actualMonthly, periodPLs) {
     </div>`;
 }
 
-function renderTable(rows, periodPLs, fromMonth, upTo, planStartMonth = 1) {
+function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
   // Sanitize inputs
   const fm = Math.max(1, Math.min(12, fromMonth || 1));
   const ut = Math.max(1, Math.min(12, upTo || 12));
@@ -766,6 +766,13 @@ function renderTable(rows, periodPLs, fromMonth, upTo, planStartMonth = 1) {
     return [mainRow, ...catItems.map(liDrillRow)];
   }).join('');
 
+  // Hint about which visible months fall back to Plan = Ist (no plan figures).
+  const noPlanInRange = unplannedMonths.filter(m => m >= startMonth && m <= endMonth);
+  const planEqIstHint = noPlanInRange.length === 0 ? '' :
+    noPlanInRange.length === visibleMonths.length
+      ? `Für diese Planversion sind im gewählten Zeitraum keine Planzahlen hinterlegt — es wird durchgehend Plan = Ist angenommen (Δ = 0).`
+      : `Für Monate ohne Planzahlen (${noPlanInRange.map(m => MONTH_SHORT[m - 1]).join(', ')}) wird Plan = Ist angenommen (Δ = 0).`;
+
   // Snapshot everything the CSV/PDF export needs to reproduce this exact view,
   // including the drill-down detail rows for whichever categories are expanded.
   _lastExport = {
@@ -786,7 +793,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo, planStartMonth = 1) {
         <span class="avp-meta-note">Δ = Ist − Plan · grün = über Plan (Umsatz) / unter Plan (Kosten)</span>
       </div>
 
-      ${planStartMonth > 1 ? `<div class="avp-hint avp-hint-info">Die Planung beginnt erst im ${MONTH_SHORT[planStartMonth - 1]} — für die Monate davor wird Plan = Ist angenommen (Δ = 0).</div>` : ''}
+      ${planEqIstHint ? `<div class="avp-hint avp-hint-info">${planEqIstHint}</div>` : ''}
 
       ${!hasActuals ? `<div class="avp-hint">Für ${yearLabel} sind noch keine Ist-Buchungen erfasst — es werden nur die Planwerte angezeigt.</div>` : ''}
 
@@ -854,24 +861,29 @@ function computePeriodsForYear(year) {
 function round2(n) { return Math.round(n * 100) / 100; }
 
 /**
- * The first month (1-12) that carries any plan entry, or 1 if the plan is
- * empty. Used to detect a plan that starts later than January.
+ * A month counts as "planned" if any non-derived category (revenue, personnel,
+ * opex, depreciation — not the computed EBITDA) has a non-zero plan value that
+ * month. Months with no plan figures are the ones we fall back to Plan = Ist.
  */
-function firstPlannedMonth(entries) {
-  const months = entries
-    .map(e => Number(e.month))
-    .filter(m => m >= 1 && m <= 12);
-  return months.length ? Math.min(...months) : 1;
+function isPlannedMonth(rows, m) {
+  return rows.some(r =>
+    !r.computed && Math.round((r.monthly[m]?.b ?? 0) * 100) !== 0);
 }
 
 /**
- * For every month strictly before `startMonth`, overwrite the plan value with
- * the actual value so the delta is zero (Plan = Ist). Mutates the comparison
- * rows in place; all downstream aggregations read from these values.
+ * For every month without any plan figures, overwrite the plan value with the
+ * actual value so the delta is zero (Plan = Ist). Handles both a plan that
+ * starts later than January and a version with no entries at all. Mutates the
+ * comparison rows in place; all downstream aggregations read from these values.
+ *
+ * @returns {number[]} the months (1-12) where Plan = Ist was assumed.
  */
-function applyPlanEqualsActualBefore(rows, startMonth) {
+function applyPlanEqualsActualForUnplanned(rows) {
+  const unplanned = [];
+  for (let m = 1; m <= 12; m++) if (!isPlannedMonth(rows, m)) unplanned.push(m);
+
   for (const row of rows) {
-    for (let m = 1; m < startMonth; m++) {
+    for (const m of unplanned) {
       const cell = row.monthly[m];
       if (!cell) continue;
       cell.b     = cell.a;
@@ -879,6 +891,7 @@ function applyPlanEqualsActualBefore(rows, startMonth) {
       cell.pct   = cell.a === 0 ? null : 0;
     }
   }
+  return unplanned;
 }
 
 function extractActualsForRange(periodPLs, fromMonth, upToMonth) {
