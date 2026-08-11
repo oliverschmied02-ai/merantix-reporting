@@ -335,11 +335,12 @@ export function avpExportPrint() {
   if (!_lastExport) { showToast('Bitte zuerst ein Jahr und eine Planversion wählen.'); return; }
   const { exportRows, visibleMonths, hasActuals, versionLabel, yearLabel, rangeLabel } = _lastExport;
 
-  const fmtN = v => (!v) ? '—'
-    : new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.round(v));
+  // PDF mirrors the on-screen table: values in thousands of EUR (T€), 1 decimal.
+  const kFmt = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+  const fmtN = v => (!v) ? '—' : kFmt.format(v / 1000);
   const fmtD = v => {
     if (!v) return '—';
-    const abs = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 0 }).format(Math.abs(Math.round(v)));
+    const abs = kFmt.format(Math.abs(v) / 1000);
     return (v > 0 ? '+' : '−') + abs;
   };
 
@@ -428,7 +429,7 @@ export function avpExportPrint() {
     <h1>Ist vs. Plan ${esc(yearLabel)}</h1>
     <div class="sub">Plan: ${esc(versionLabel)} · Zeitraum: ${esc(rangeLabel)}</div>
   </div>
-  <div class="meta">Exportiert am ${exportDate}<br>Alle Beträge in EUR</div>
+  <div class="meta">Exportiert am ${exportDate}<br>Alle Beträge in Tausend EUR (T€)</div>
 </div>
 <table>
   <colgroup><col style="width:${posW}px"></colgroup>
@@ -617,15 +618,16 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
   // Month header columns (only for range)
   const visibleMonths = Array.from({ length: endMonth - startMonth + 1 }, (_, i) => startMonth + i);
 
-  const monthHeaders = visibleMonths.map(m =>
-    `<th colspan="3" class="avp-month-head">${MONTH_SHORT[m - 1]}</th>`
+  const monthHeaders = visibleMonths.map((m, i) =>
+    `<th colspan="3" class="avp-month-head avp-mgrp${i % 2}">${MONTH_SHORT[m - 1]}</th>`
   ).join('') + `<th colspan="3" class="avp-annual-head">Gesamt ${rangeLabel}</th>`;
 
-  const subHeaders = visibleMonths.map(() =>
-    `<th class="avp-sub ist">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`
+  const subHeaders = visibleMonths.map((_, i) =>
+    `<th class="avp-sub ist avp-mgrp${i % 2}">Ist</th><th class="avp-sub plan avp-mgrp${i % 2}">Plan</th><th class="avp-sub delta avp-mgrp${i % 2}">Δ</th>`
   ).join('') + `<th class="avp-sub ist avp-ytd-sep">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`;
 
   const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
+  const unplannedSet  = new Set(unplannedMonths);
 
   // Build entry map for drill-down
   const liEntryMap = new Map();
@@ -640,16 +642,25 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
     const isExpanded  = _expandedRows.has(row.key);
     const rowClass    = isEbitda ? 'avp-row avp-row-ebitda' : 'avp-row';
 
-    const monthlyCells = visibleMonths.map(m => {
+    const monthlyCells = visibleMonths.map((m, i) => {
       const cell   = row.monthly[m] ?? { a: 0, b: 0 };
       const ist    = cell.a;
       const plan   = cell.b;
+      const g      = `avp-mgrp${i % 2}`;
+      // Months without a plan (Plan = Ist): don't repeat the identical number —
+      // show "=" for Plan and leave Δ empty so the eye skips over them.
+      if (unplannedSet.has(m)) {
+        return `
+        <td class="avp-cell ist ${g}">${fmtActual(ist)}</td>
+        <td class="avp-cell plan ${g}"><span class="avp-eq">=</span></td>
+        <td class="avp-cell delta ${g}"></td>`;
+      }
       const ivp    = round2(ist - plan);
       const ivpCls = varClass(row.key, ivp);
       return `
-        <td class="avp-cell ist">${fmtActual(ist)}</td>
-        <td class="avp-cell plan">${fmtActual(plan)}</td>
-        <td class="avp-cell delta avp-delta-${ivpCls}">${fmtDelta(ivp)}</td>`;
+        <td class="avp-cell ist ${g}">${fmtActual(ist)}</td>
+        <td class="avp-cell plan ${g}">${fmtActual(plan)}</td>
+        <td class="avp-cell delta avp-delta-${ivpCls} ${g}">${fmtDelta(ivp)}</td>`;
     }).join('');
 
     const ytdAct = ytdActual[row.key] ?? 0;
@@ -693,12 +704,13 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
     }
 
     // Plan-only monthly cells (Ist/Δ columns stay blank at line-item level)
-    const planCells = amounts => visibleMonths.map(m => {
+    const planCells = amounts => visibleMonths.map((m, i) => {
       const v = amounts[m] ?? 0;
+      const g = `avp-mgrp${i % 2}`;
       return `
-        <td class="avp-cell avp-drill-cell"></td>
-        <td class="avp-cell avp-drill-cell plan">${v !== 0 ? fmtActual(v) : '<span class="avp-zero">—</span>'}</td>
-        <td class="avp-cell avp-drill-cell"></td>`;
+        <td class="avp-cell avp-drill-cell ${g}"></td>
+        <td class="avp-cell avp-drill-cell plan ${g}">${v !== 0 ? fmtActual(v) : '<span class="avp-zero">—</span>'}</td>
+        <td class="avp-cell avp-drill-cell ${g}"></td>`;
     }).join('');
     const rangeYtd = amounts => {
       let s = 0;
@@ -790,6 +802,8 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
         <span class="avp-meta-sep">·</span>
         <span class="avp-meta-period">Zeitraum</span>
         <span class="avp-range-badge">${rangeLabel}</span>
+        <span class="avp-meta-sep">·</span>
+        <span class="avp-meta-unit">Werte in T€</span>
         <span class="avp-meta-note">Δ = Ist − Plan · grün = über Plan (Umsatz) / unter Plan (Kosten)</span>
       </div>
 
@@ -817,16 +831,19 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
 // ── Helpers ───────────────────────────────────────────────────────────
 
 const TYPE_LABEL = { budget: 'Budget', forecast: 'Forecast', scenario: 'Szenario' };
-const FMT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+// On-screen values are shown in thousands of EUR (T€) with one decimal, so a
+// wall of six-digit euro figures becomes a readable "1.190,9". The unit is
+// stated once in the meta bar; CSV export keeps full euros for calculations.
+const FMT_K = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 function fmtActual(v) {
   if (v === 0) return '<span class="avp-zero">—</span>';
-  return FMT.format(Math.round(v));
+  return FMT_K.format(v / 1000);
 }
 
 function fmtDelta(v) {
   if (v === 0) return '<span class="avp-zero">—</span>';
-  const abs = FMT.format(Math.abs(Math.round(v)));
+  const abs = FMT_K.format(Math.abs(v) / 1000);
   return v > 0 ? `+${abs}` : `−${abs}`;
 }
 
