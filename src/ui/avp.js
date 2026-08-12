@@ -187,7 +187,7 @@ function safeSlug(s) {
  * Each row: { style: 'cat'|'ebitda'|'group'|'item', label, indent, planOnly,
  *             key?, monthly: {m:{a?,b}}, ytd: {a?,b} }
  */
-function buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan) {
+function buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan, periodPLs = [], unplannedMonths = []) {
   const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
 
   const liEntryMap = new Map();
@@ -224,32 +224,66 @@ function buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, y
     if (!catItems.length) continue;
 
     if (row.key === 'opex') {
-      // Preserve the sBA sub-category grouping (Fremdleistungen, Events …).
-      const opexDef  = APP.plDef.find(s => s.id === 'opex');
-      const subs     = opexDef?.subs ?? [];
-      const subLabel = new Map(subs.map(s => [s.id, s.label]));
-      const byItem   = new Map();
+      // Preserve the sBA sub-category grouping (Fremdleistungen, Events …) and,
+      // like the on-screen view, show Ist/Δ at the group level (P&L sub actuals).
+      const opexDef = APP.plDef.find(s => s.id === 'opex');
+      const subs    = opexDef?.subs ?? [];
+      const subIds  = new Set(subs.map(s => s.id));
+      const unplanned = new Set(unplannedMonths);
+      const byItem  = new Map();
       for (const li of catItems) {
-        const k = subLabel.has(li.item_id) ? li.item_id : '_other';
+        const k = subIds.has(li.item_id) ? li.item_id : '_other';
         if (!byItem.has(k)) byItem.set(k, []);
         byItem.get(k).push(li);
       }
-      const orderedKeys = [
-        ...subs.map(s => s.id).filter(k => byItem.has(k)),
-        ...(byItem.has('_other') ? ['_other'] : []),
-      ];
-      for (const k of orderedKeys) {
-        const lis = byItem.get(k);
-        const groupAmounts = {};
+      const planMonthlyOf = lis => {
+        const o = {};
         for (const li of lis) {
           const a = liEntryMap.get(li.id) || {};
-          for (const [m, v] of Object.entries(a)) groupAmounts[m] = (groupAmounts[m] || 0) + v;
+          for (const [m, v] of Object.entries(a)) o[m] = (o[m] || 0) + v;
+        }
+        return o;
+      };
+      const istOfSub = (subId, m) => periodPLs?.[m - 1]?.vals?.opex?.bySubId?.[subId]?.amount ?? 0;
+
+      for (const sub of subs) {
+        const lis   = byItem.get(sub.id) || [];
+        const planM = planMonthlyOf(lis);
+        const hasIst  = visibleMonths.some(m => istOfSub(sub.id, m) !== 0);
+        const hasPlan = rangeYtd(planM) !== 0;
+        if (!hasIst && !hasPlan) continue;
+        const monthly = {};
+        let istY = 0, planY = 0;
+        for (const m of visibleMonths) {
+          const ist  = istOfSub(sub.id, m);
+          const plan = unplanned.has(m) ? ist : (planM[m] ?? 0);
+          monthly[m] = { a: ist, b: plan };
+        }
+        for (let m = startMonth; m <= endMonth; m++) {
+          const ist = istOfSub(sub.id, m);
+          istY  += ist;
+          planY += unplanned.has(m) ? ist : (planM[m] ?? 0);
         }
         out.push({
-          style: 'group', label: subLabel.get(k) || 'Sonstiges', indent: 1, planOnly: true,
-          monthly: monthlyPlan(groupAmounts), ytd: { b: rangeYtd(groupAmounts) },
+          style: 'group', key: 'opex', label: sub.label, indent: 1, planOnly: false,
+          monthly, ytd: { a: istY, b: planY },
         });
         for (const li of lis) {
+          const a = liEntryMap.get(li.id) || {};
+          out.push({
+            style: 'item', label: li.label + (li.entity ? ` (${li.entity})` : ''), indent: 2, planOnly: true,
+            monthly: monthlyPlan(a), ytd: { b: rangeYtd(a) },
+          });
+        }
+      }
+      const others = byItem.get('_other') || [];
+      if (others.length) {
+        const planM = planMonthlyOf(others);
+        out.push({
+          style: 'group', label: 'Sonstiges', indent: 1, planOnly: true,
+          monthly: monthlyPlan(planM), ytd: { b: rangeYtd(planM) },
+        });
+        for (const li of others) {
           const a = liEntryMap.get(li.id) || {};
           out.push({
             style: 'item', label: li.label + (li.entity ? ` (${li.entity})` : ''), indent: 2, planOnly: true,
@@ -735,42 +769,105 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
         </tr>`;
     };
 
-    // OpEx keeps its sBA sub-category structure (Fremdleistungen, Events …):
-    // group the line items by item_id and show a subtotal row per group, so
-    // the drill-down mirrors the planning grid instead of a flat list.
+    // OpEx keeps its sBA sub-category structure (Fremdleistungen, Events …).
+    // These groups ARE the P&L sub-categories, so — unlike the individual plan
+    // line items — their ACTUALS are available: Ist comes from the P&L engine
+    // (periodPLs[m].vals.opex.bySubId[subId]), Plan from the summed line items.
     if (row.key === 'opex') {
-      const opexDef  = APP.plDef.find(s => s.id === 'opex');
-      const subs     = opexDef?.subs ?? [];
-      const subLabel = new Map(subs.map(s => [s.id, s.label]));
-      const byItem   = new Map();
+      const opexDef = APP.plDef.find(s => s.id === 'opex');
+      const subs    = opexDef?.subs ?? [];
+      const subIds  = new Set(subs.map(s => s.id));
+
+      // Group plan line items by their P&L sub-category (item_id); anything that
+      // doesn't map to a real sub lands in the plan-only "_other" bucket.
+      const byItem = new Map();
       for (const li of catItems) {
-        const key = subLabel.has(li.item_id) ? li.item_id : '_other';
+        const key = subIds.has(li.item_id) ? li.item_id : '_other';
         if (!byItem.has(key)) byItem.set(key, []);
         byItem.get(key).push(li);
       }
-      const orderedKeys = [
-        ...subs.map(s => s.id).filter(k => byItem.has(k)),
-        ...(byItem.has('_other') ? ['_other'] : []),
-      ];
-      const out = [mainRow];
-      for (const key of orderedKeys) {
-        const lis = byItem.get(key);
-        // sub-category subtotal = sum of its line items
-        const groupAmounts = {};
+
+      const planMonthlyOf = lis => {
+        const out = {};
         for (const li of lis) {
           const a = liEntryMap.get(li.id) || {};
-          for (const [m, v] of Object.entries(a)) groupAmounts[m] = (groupAmounts[m] || 0) + v;
+          for (const [m, v] of Object.entries(a)) out[m] = (out[m] || 0) + v;
         }
-        const gYtd = rangeYtd(groupAmounts);
+        return out;
+      };
+      const istMonthlyOfSub = subId => {
+        const out = {};
+        for (const m of visibleMonths) {
+          out[m] = periodPLs[m - 1]?.vals?.opex?.bySubId?.[subId]?.amount ?? 0;
+        }
+        return out;
+      };
+
+      // Sub-category subtotal showing Ist / Plan / Δ, mirroring the main rows.
+      // Unplanned months follow the same "Plan = Ist" rule as the categories.
+      const groupRow = (label, istM, planM) => {
+        const cells = visibleMonths.map((m, i) => {
+          const g   = `avp-mgrp${i % 2}`;
+          const ist = istM[m] ?? 0;
+          if (unplannedSet.has(m)) {
+            return `
+              <td class="avp-cell ist ${g}">${fmtActual(ist)}</td>
+              <td class="avp-cell plan ${g}"><span class="avp-eq">=</span></td>
+              <td class="avp-cell delta ${g}"></td>`;
+          }
+          const plan = planM[m] ?? 0;
+          const d    = round2(ist - plan);
+          const dc   = varClass('opex', d);
+          return `
+            <td class="avp-cell ist ${g}">${fmtActual(ist)}</td>
+            <td class="avp-cell plan ${g}">${fmtActual(plan)}</td>
+            <td class="avp-cell delta avp-delta-${dc} ${g}">${fmtDelta(d)}</td>`;
+        }).join('');
+        let istY = 0, planY = 0;
+        for (let m = startMonth; m <= endMonth; m++) {
+          const ist = istM[m] ?? 0;
+          istY  += ist;
+          planY += unplannedSet.has(m) ? ist : (planM[m] ?? 0);
+        }
+        const dY  = round2(istY - planY);
+        const dcY = varClass('opex', dY);
+        return `
+          <tr class="avp-drill-row avp-drill-group">
+            <td class="avp-drill-label avp-drill-group-label">${esc(label)}</td>
+            ${cells}
+            <td class="avp-cell ist avp-ytd avp-ytd-sep avp-g avp-g-ist">${fmtActual(istY)}</td>
+            <td class="avp-cell plan avp-ytd avp-g avp-g-plan">${fmtActual(planY)}</td>
+            <td class="avp-cell delta avp-ytd avp-delta-${dcY} avp-g avp-g-delta">${fmtDelta(dY)}</td>
+          </tr>`;
+      };
+
+      const out = [mainRow];
+      for (const sub of subs) {
+        const lis   = byItem.get(sub.id) || [];
+        const planM = planMonthlyOf(lis);
+        const istM  = istMonthlyOfSub(sub.id);
+        const hasIst  = visibleMonths.some(m => (istM[m] ?? 0) !== 0);
+        const hasPlan = rangeYtd(planM) !== 0;
+        if (!hasIst && !hasPlan) continue;               // skip empty sub-categories
+        out.push(groupRow(sub.label, istM, planM));
+        for (const li of lis) out.push(liDrillRow(li));  // line items stay plan-only
+      }
+
+      // Plan positions not mapped to a P&L sub-category have no actuals — keep
+      // them plan-only (Ist/Δ blank) under a "Sonstiges" subtotal.
+      const others = byItem.get('_other') || [];
+      if (others.length) {
+        const planM = planMonthlyOf(others);
+        const gYtd  = rangeYtd(planM);
         out.push(`
           <tr class="avp-drill-row avp-drill-group">
-            <td class="avp-drill-label avp-drill-group-label">${esc(subLabel.get(key) || 'Sonstiges')}</td>
-            ${planCells(groupAmounts)}
+            <td class="avp-drill-label avp-drill-group-label">Sonstiges</td>
+            ${planCells(planM)}
             <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep avp-g avp-g-ist"></td>
             <td class="avp-cell avp-drill-cell plan avp-ytd avp-g avp-g-plan">${gYtd !== 0 ? fmtActual(gYtd) : '<span class="avp-zero">—</span>'}</td>
             <td class="avp-cell avp-drill-cell avp-ytd avp-g avp-g-delta"></td>
           </tr>`);
-        for (const li of lis) out.push(liDrillRow(li));
+        for (const li of others) out.push(liDrillRow(li));
       }
       return out;
     }
@@ -788,7 +885,7 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
   // Snapshot everything the CSV/PDF export needs to reproduce this exact view,
   // including the drill-down detail rows for whichever categories are expanded.
   _lastExport = {
-    exportRows: buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan),
+    exportRows: buildExportRows(rows, visibleMonths, startMonth, endMonth, ytdActual, ytdPlan, periodPLs, unplannedMonths),
     visibleMonths, startMonth, endMonth, hasActuals,
     versionLabel: versionLabelRaw, yearLabel: String(yearLabel), rangeLabel,
   };
