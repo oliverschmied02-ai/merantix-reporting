@@ -44,6 +44,22 @@ describe('drill-down sorting', () => {
     expect(descColumn()).toEqual(['Zeta', 'Mango', 'alpha']);
   });
 
+  it('breaks ties by date (newest first) when the sorted column is uniform', () => {
+    drillSort('haben');                        // all three Haben = 0 → tiebreaker
+    // Falls back to date desc: Mar (Zeta), Feb (Mango), Jan (alpha).
+    expect(descColumn()).toEqual(['Zeta', 'Mango', 'alpha']);
+  });
+
+  it('sorts German-formatted amount strings numerically', () => {
+    APP.drillTxns = [
+      { datum: new Date('2026-01-01'), text: 'klein', soll: '90,00',    haben: 0 },
+      { datum: new Date('2026-01-02'), text: 'gross', soll: '1.250,50', haben: 0 },
+      { datum: new Date('2026-01-03'), text: 'mittel', soll: '300,00',  haben: 0 },
+    ];
+    drillSort('text'); drillSort('soll');      // deterministically land on soll desc
+    expect(descColumn()).toEqual(['gross', 'mittel', 'klein']); // 1250,5 > 300 > 90
+  });
+
   it('sorts dates newest→oldest and marks the active header', () => {
     drillSort('datum');                        // date → desc (newest first)
     expect(descColumn()).toEqual(['Zeta', 'Mango', 'alpha']); // Mar, Feb, Jan

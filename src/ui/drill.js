@@ -21,15 +21,30 @@ export function drillSort(key) {
   renderDrillTable();
 }
 
+// Coerce an amount that may arrive as a JS number, a plain numeric string
+// ("1250.50"), or a German-formatted string ("1.250,50") into a number.
+function toNum(v) {
+  if (typeof v === 'number') return v;
+  if (v == null) return 0;
+  let s = String(v).trim();
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.'); // de → en
+  return Number(s) || 0;
+}
+
 function sortTxns(list) {
   const dir  = _sortDir === 'asc' ? 1 : -1;
   const type = DRILL_COLS[_sortKey] || 'str';
-  return [...list].sort((a, b) => {
-    let av = a[_sortKey], bv = b[_sortKey];
+  const primary = (a, b) => {
+    const av = a[_sortKey], bv = b[_sortKey];
     if (type === 'date') return ((av ? av.getTime() : 0) - (bv ? bv.getTime() : 0)) * dir;
-    if (type === 'num')  return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+    if (type === 'num')  return (toNum(av) - toNum(bv)) * dir;
     return (av ?? '').toString().localeCompare((bv ?? '').toString(), 'de', { numeric: true }) * dir;
-  });
+  };
+  // Stable, meaningful tiebreaker: rows whose primary value is equal (e.g. every
+  // Haben = 0 in an expense account, or the same Konto throughout) still fall
+  // into a sensible order — newest first — instead of looking unsorted.
+  const byDateDesc = (a, b) => (b.datum ? b.datum.getTime() : 0) - (a.datum ? a.datum.getTime() : 0);
+  return [...list].sort((a, b) => primary(a, b) || (_sortKey === 'datum' ? 0 : byDateDesc(a, b)));
 }
 
 function updateDrillSortIndicators() {
