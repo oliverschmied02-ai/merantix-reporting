@@ -384,6 +384,11 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
   border-bottom: 1px solid var(--c-border); z-index: 1;
 }
 .drill-table thead th.r { text-align: right; }
+.drill-table thead th.drill-th { cursor: pointer; user-select: none; transition: color .12s; }
+.drill-table thead th.drill-th:hover { color: var(--c-primary); }
+.drill-table thead th.drill-th.sorted { color: var(--c-primary); }
+.drill-table thead th.drill-th:focus-visible { outline: 2px solid var(--c-primary); outline-offset: -2px; }
+.drill-sort-ind { font-size: .6rem; }
 .drill-table tbody tr { border-bottom: 1px solid var(--c-border-soft); }
 .drill-table tbody tr:hover { background: var(--c-surface-2); }
 .drill-table td { padding: .45rem .85rem; font-size: .76rem; }

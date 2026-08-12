@@ -1,6 +1,46 @@
 import { APP } from '../state.js';
 import { esc, fmtFull } from '../lib/utils.js';
 
+// Sortable columns in the drill-down table and their value types. Strings sort
+// A→Z by default, numbers/dates sort high→low (newest / largest first).
+const DRILL_COLS = {
+  datum: 'date', beleg: 'str', ktonr: 'num', gktonr: 'num',
+  text: 'str', soll: 'num', haben: 'num',
+};
+let _sortKey = 'datum';
+let _sortDir = 'desc';
+
+export function drillSort(key) {
+  if (!(key in DRILL_COLS)) return;
+  if (_sortKey === key) {
+    _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _sortKey = key;
+    _sortDir = DRILL_COLS[key] === 'str' ? 'asc' : 'desc';
+  }
+  renderDrillTable();
+}
+
+function sortTxns(list) {
+  const dir  = _sortDir === 'asc' ? 1 : -1;
+  const type = DRILL_COLS[_sortKey] || 'str';
+  return [...list].sort((a, b) => {
+    let av = a[_sortKey], bv = b[_sortKey];
+    if (type === 'date') return ((av ? av.getTime() : 0) - (bv ? bv.getTime() : 0)) * dir;
+    if (type === 'num')  return ((Number(av) || 0) - (Number(bv) || 0)) * dir;
+    return (av ?? '').toString().localeCompare((bv ?? '').toString(), 'de', { numeric: true }) * dir;
+  });
+}
+
+function updateDrillSortIndicators() {
+  document.querySelectorAll('#drill-panel .drill-th').forEach(th => {
+    const active = th.dataset.sortkey === _sortKey;
+    th.classList.toggle('sorted', active);
+    const ind = th.querySelector('.drill-sort-ind');
+    if (ind) ind.textContent = active ? (_sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  });
+}
+
 export function openDrill(acct, subId, itemId, periodIdx) {
   const { periodPLs, ytdPL, periods, year } = APP.plData;
 
@@ -50,11 +90,12 @@ export function renderDrillTable() {
       );
 
   const tbody = document.getElementById('drill-tbody');
+  updateDrillSortIndicators();
   if (!filtered.length) {
     tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state">${search ? 'Keine Treffer' : 'Keine Buchungen'}</div></td></tr>`;
     return;
   }
-  const sorted = [...filtered].sort((a, b) => (b.datum || 0) - (a.datum || 0));
+  const sorted = sortTxns(filtered);
   tbody.innerHTML = sorted.map(t => {
     const d = t.datum
       ? t.datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })

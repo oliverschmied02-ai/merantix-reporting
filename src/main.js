@@ -3,7 +3,7 @@ import { loadAppState, loadKpiOrder } from './lib/storage.js';
 import { APP, resetAPP } from './state.js';
 import { setScreen, setLoading, showToast, updateAboveTableHeight } from './ui/screen.js';
 import { buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV, exportPLPrint } from './ui/pl-table.js';
-import { openDrill, renderDrillTable, closeDrill } from './ui/drill.js';
+import { openDrill, renderDrillTable, closeDrill, drillSort } from './ui/drill.js';
 import { toggleSettings, switchSettingsTab, renderCoATree, renderDataStats,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,
@@ -47,7 +47,7 @@ function setMainView(name) {
 Object.assign(window, {
   setMainView, showToast, setLoading, updateAboveTableHeight,
   buildPL, toggleSection, toggleSub, setViewMode, exportPLCSV, exportPLPrint,
-  openDrill, renderDrillTable, closeDrill,
+  openDrill, renderDrillTable, closeDrill, drillSort,
   toggleSettings, switchSettingsTab, renderCoATree,
   addSubDialog, toggleAcctPicker, filterAcctPicker, addAccountToSub,
   unmapAndMove, updateItemLabel, updateItemBalance, updateSubLabel,

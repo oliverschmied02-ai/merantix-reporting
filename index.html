@@ -601,8 +601,13 @@
         <table class="drill-table">
           <thead>
             <tr>
-              <th>Datum</th><th>Beleg</th><th>Kto</th><th>GKto</th>
-              <th>Buchungstext</th><th class="r">Soll</th><th class="r">Haben</th>
+              <th class="drill-th" data-sortkey="datum" data-act="drillSort" data-act-args="[&quot;datum&quot;]" tabindex="0" role="button">Datum<span class="drill-sort-ind"></span></th>
+              <th class="drill-th" data-sortkey="beleg" data-act="drillSort" data-act-args="[&quot;beleg&quot;]" tabindex="0" role="button">Beleg<span class="drill-sort-ind"></span></th>
+              <th class="drill-th" data-sortkey="ktonr" data-act="drillSort" data-act-args="[&quot;ktonr&quot;]" tabindex="0" role="button">Kto<span class="drill-sort-ind"></span></th>
+              <th class="drill-th" data-sortkey="gktonr" data-act="drillSort" data-act-args="[&quot;gktonr&quot;]" tabindex="0" role="button">GKto<span class="drill-sort-ind"></span></th>
+              <th class="drill-th" data-sortkey="text" data-act="drillSort" data-act-args="[&quot;text&quot;]" tabindex="0" role="button">Buchungstext<span class="drill-sort-ind"></span></th>
+              <th class="drill-th r" data-sortkey="soll" data-act="drillSort" data-act-args="[&quot;soll&quot;]" tabindex="0" role="button">Soll<span class="drill-sort-ind"></span></th>
+              <th class="drill-th r" data-sortkey="haben" data-act="drillSort" data-act-args="[&quot;haben&quot;]" tabindex="0" role="button">Haben<span class="drill-sort-ind"></span></th>
             </tr>
           </thead>
           <tbody id="drill-tbody"></tbody>
