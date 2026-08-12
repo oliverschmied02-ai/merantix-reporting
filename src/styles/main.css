@@ -340,7 +340,7 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
 
 /* ── Drill Panel ── */
 #drill-panel {
-  position: fixed; right: -600px; top: 0; bottom: 0; width: 580px;
+  position: fixed; right: -880px; top: 0; bottom: 0; width: min(820px, 94vw);
   background: #fff; border-left: 1px solid var(--c-border);
   display: flex; flex-direction: column; z-index: 300;
   box-shadow: -12px 0 48px rgba(30,36,51,.12);
@@ -391,7 +391,7 @@ tr.row-section.open .expand-btn, tr.row-sub.open .expand-btn {
 .td-doc { color: #c4cde0; font-family: monospace; font-size: .68rem; white-space: nowrap; }
 .td-konto { color: var(--c-primary); font-family: monospace; font-size: .7rem; font-weight: 600; }
 .td-gkto { color: #c4cde0; font-size: .67rem; }
-.td-desc { color: #4b5563; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.td-desc { color: #4b5563; max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .td-amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; white-space: nowrap; }
 .sh-s { color: var(--c-danger); }
 .sh-h { color: var(--c-success); }

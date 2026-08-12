@@ -60,12 +60,12 @@ export function renderDrillTable() {
       ? t.datum.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' })
       : '—';
     const gn = t.gktonr ? APP.accountNames.get(t.gktonr) || '' : '';
-    const gl = t.gktonr ? `${t.gktonr}${gn ? ' ' + gn.slice(0, 15) : ''}` : ' ';
+    const gl = t.gktonr ? `${t.gktonr}${gn ? ' ' + gn.slice(0, 24) : ''}` : ' ';
     return `<tr>
       <td class="td-date">${d}</td>
       <td class="td-doc">${esc(t.beleg || '—')}</td>
       <td class="td-konto">${t.ktonr}</td>
-      <td class="td-gkto" title="${esc(gn)}">${esc(gl.slice(0, 20))}</td>
+      <td class="td-gkto" title="${esc(gn)}">${esc(gl.slice(0, 32))}</td>
       <td class="td-desc" title="${esc(t.text)}">${esc(t.text || '—')}</td>
       <td class="td-amt ${t.soll  > 0 ? 'sh-s' : 'sz'}">${t.soll  > 0 ? fmtFull(t.soll)  : '—'}</td>
       <td class="td-amt ${t.haben > 0 ? 'sh-h' : 'sz'}">${t.haben > 0 ? fmtFull(t.haben) : '—'}</td>
