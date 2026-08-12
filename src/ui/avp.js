@@ -620,11 +620,11 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
 
   const monthHeaders = visibleMonths.map((m, i) =>
     `<th colspan="3" class="avp-month-head avp-mgrp${i % 2}">${MONTH_SHORT[m - 1]}</th>`
-  ).join('') + `<th colspan="3" class="avp-annual-head">Gesamt ${rangeLabel}</th>`;
+  ).join('') + `<th colspan="3" class="avp-annual-head avp-g-head">Gesamt ${rangeLabel}</th>`;
 
   const subHeaders = visibleMonths.map((_, i) =>
     `<th class="avp-sub ist avp-mgrp${i % 2}">Ist</th><th class="avp-sub plan avp-mgrp${i % 2}">Plan</th><th class="avp-sub delta avp-mgrp${i % 2}">Δ</th>`
-  ).join('') + `<th class="avp-sub ist avp-ytd-sep">Ist</th><th class="avp-sub plan">Plan</th><th class="avp-sub delta">Δ</th>`;
+  ).join('') + `<th class="avp-sub ist avp-ytd-sep avp-g avp-g-ist">Ist</th><th class="avp-sub plan avp-g avp-g-plan">Plan</th><th class="avp-sub delta avp-g avp-g-delta">Δ</th>`;
 
   const drillableKeys = new Set(['revenue', 'personnel', 'opex']);
   const unplannedSet  = new Set(unplannedMonths);
@@ -681,9 +681,9 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
           ${drillChevron}${esc(row.label)}
         </td>
         ${monthlyCells}
-        <td class="avp-cell ist avp-ytd avp-ytd-sep">${fmtActual(ytdAct)}</td>
-        <td class="avp-cell plan avp-ytd">${fmtActual(ytdPl)}</td>
-        <td class="avp-cell delta avp-ytd avp-delta-${ytdCls}">
+        <td class="avp-cell ist avp-ytd avp-ytd-sep avp-g avp-g-ist">${fmtActual(ytdAct)}</td>
+        <td class="avp-cell plan avp-ytd avp-g avp-g-plan">${fmtActual(ytdPl)}</td>
+        <td class="avp-cell delta avp-ytd avp-delta-${ytdCls} avp-g avp-g-delta">
           ${fmtDelta(ytdIvp)}
           ${ytdPct !== null ? `<br><span class="avp-pct">${ytdIvp >= 0 ? '+' : ''}${ytdPct}%</span>` : ''}
         </td>
@@ -729,9 +729,9 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
             ${li.entity ? `<span class="avp-drill-tag">${esc(li.entity)}</span>` : ''}
           </td>
           ${planCells(a)}
-          <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep"></td>
-          <td class="avp-cell avp-drill-cell plan avp-ytd">${ytd !== 0 ? fmtActual(ytd) : '<span class="avp-zero">—</span>'}</td>
-          <td class="avp-cell avp-drill-cell avp-ytd"></td>
+          <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep avp-g avp-g-ist"></td>
+          <td class="avp-cell avp-drill-cell plan avp-ytd avp-g avp-g-plan">${ytd !== 0 ? fmtActual(ytd) : '<span class="avp-zero">—</span>'}</td>
+          <td class="avp-cell avp-drill-cell avp-ytd avp-g avp-g-delta"></td>
         </tr>`;
     };
 
@@ -766,9 +766,9 @@ function renderTable(rows, periodPLs, fromMonth, upTo, unplannedMonths = []) {
           <tr class="avp-drill-row avp-drill-group">
             <td class="avp-drill-label avp-drill-group-label">${esc(subLabel.get(key) || 'Sonstiges')}</td>
             ${planCells(groupAmounts)}
-            <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep"></td>
-            <td class="avp-cell avp-drill-cell plan avp-ytd">${gYtd !== 0 ? fmtActual(gYtd) : '<span class="avp-zero">—</span>'}</td>
-            <td class="avp-cell avp-drill-cell avp-ytd"></td>
+            <td class="avp-cell avp-drill-cell avp-ytd avp-ytd-sep avp-g avp-g-ist"></td>
+            <td class="avp-cell avp-drill-cell plan avp-ytd avp-g avp-g-plan">${gYtd !== 0 ? fmtActual(gYtd) : '<span class="avp-zero">—</span>'}</td>
+            <td class="avp-cell avp-drill-cell avp-ytd avp-g avp-g-delta"></td>
           </tr>`);
         for (const li of lis) out.push(liDrillRow(li));
       }

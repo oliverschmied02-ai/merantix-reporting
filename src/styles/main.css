@@ -212,9 +212,17 @@ select.ctrl:focus { outline: none; border-color: var(--c-primary); box-shadow: 0
 .pl-table td.td-pos {
   text-align: left; font-size: .8rem; position: sticky; left: 0;
   background: inherit; display: flex; align-items: center; gap: .4rem;
-  border-right: 1px solid #edf0f8; min-width: 240px; max-width: 300px;
+  border-right: 1px solid #edf0f8; min-width: 260px;
 }
 .pl-table td.td-ytd { border-left: 2px solid var(--c-border); font-weight: 600; }
+
+/* Fixed-width value columns so the numbers line up in tidy columns and the
+   table fills the width by widening the (long-labelled) Position column,
+   instead of leaving a phantom gap between Position and the months. */
+.pl-table thead th:not(.th-pos):not(.th-ytd),
+.pl-table td:not(.td-pos):not(.td-ytd) { width: 86px; }
+.pl-table thead th.th-ytd,
+.pl-table td.td-ytd { width: 124px; }
 
 .data-cell { cursor: pointer; }
 .data-cell:hover {
@@ -1463,7 +1471,7 @@ textarea.plan-input { resize: vertical; }
   background: var(--c-surface-3); white-space: nowrap; color: var(--c-primary);
 }
 .avp-sub {
-  font-size: .68rem; font-weight: 600; text-align: center; padding: .25rem .3rem;
+  font-size: .68rem; font-weight: 600; text-align: right; padding: .25rem .4rem;
   border-bottom: 2px solid var(--c-border); background: #fafbfd;
   color: var(--c-text-faint); white-space: nowrap;
 }
@@ -1502,6 +1510,28 @@ textarea.plan-input { resize: vertical; }
 .avp-eq { color: #c2cad8; font-weight: 600; }
 /* Unit label in the meta bar. */
 .avp-meta-unit { font-weight: 600; color: var(--c-text-soft); }
+
+/* ── Column sizing ──
+   Months get a fixed width so they never get cramped when Jan–Dez is selected;
+   the whole table then scrolls horizontally inside .avp-table-scroll. The
+   sticky Position column absorbs any leftover width for short ranges. */
+.avp-cell:not(.avp-g),
+.avp-sub:not(.avp-g)        { width: 58px; min-width: 58px; }
+.avp-cell.delta:not(.avp-g),
+.avp-sub.delta:not(.avp-g)  { width: 66px; min-width: 66px; }
+.avp-label, .avp-label-head { min-width: 240px; }
+
+/* Gesamt (range total) block pinned to the right edge while the months scroll
+   underneath it — mirrors the sticky Position column on the left. */
+.avp-g-ist, .avp-g-plan     { width: 74px; min-width: 74px; }
+.avp-g-delta                { width: 80px; min-width: 80px; }
+.avp-g, .avp-g-head         { position: sticky; z-index: 4; }
+.avp-g-head                 { right: 0; z-index: 5; }
+.avp-g-ist                  { right: 154px; }  /* plan (74) + delta (80) */
+.avp-g-plan                 { right: 80px; }   /* delta (80) */
+.avp-g-delta                { right: 0; }
+/* A crisp left edge on the pinned block so it reads as one unit while scrolling. */
+.avp-g-ist                  { box-shadow: -6px 0 6px -6px rgba(30,36,51,.12); }
 /* Gesamt (YTD) group: subtle background tint on all three cells, and a single
    divider on the group's left edge (.avp-ytd-sep) — not one line per cell. */
 .avp-ytd        { background: #fafbff; }
@@ -1785,12 +1815,14 @@ textarea.plan-input { resize: vertical; }
 .avp-row-drillable .avp-label { user-select: none; }
 
 .avp-drill-chevron {
-  display: inline-flex; align-items: center; margin-right: .35rem;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 14px; margin-right: .35rem; flex-shrink: 0;
   color: var(--c-text-faint); transition: transform .15s; vertical-align: middle;
-  flex-shrink: 0;
 }
 .avp-drill-chevron.expanded { color: var(--c-primary); }
-.avp-drill-chevron-placeholder { display: inline-block; width: 18px; margin-right: .35rem; }
+/* Same footprint as the chevron so non-drillable rows (EBITDA, Abschreibungen)
+   line their labels up with the drillable categories above them. */
+.avp-drill-chevron-placeholder { display: inline-block; width: 14px; margin-right: .35rem; }
 
 .avp-drill-row td {
   padding: .28rem .4rem; border-bottom: 1px solid var(--c-surface-2);

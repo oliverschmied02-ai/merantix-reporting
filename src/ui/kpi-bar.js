@@ -9,7 +9,7 @@ export function renderKpiBar(ytdPL) {
     ebitda:    { label: 'EBITDA YTD',   val: () => ytdPL.computed['ebitda']||0,  sub: v => revC ? ((v/revC)*100).toFixed(1)+'%' : '—' },
     ebit:      { label: 'EBIT YTD',     val: () => ytdPL.computed['ebit']||0,    sub: v => revC ? ((v/revC)*100).toFixed(1)+'%' : '—' },
     personnel: { label: 'Personalaufw.',val: () => ytdPL.computed['personnel']||0,sub: v => revC ? ((v/revC)*100).toFixed(1)+' % v. Umsatz' : '—' },
-    opex:      { label: 'sBA',          val: () => ytdPL.computed['opex']||0,     sub: v => revC ? ((v/revC)*100).toFixed(1)+' % v. Umsatz' : '—' },
+    opex:      { label: 'Sonstige betriebliche Aufwendungen', val: () => ytdPL.computed['opex']||0, sub: v => revC ? ((v/revC)*100).toFixed(1)+' % v. Umsatz' : '—' },
   };
   const kpiOrder = APP.kpiOrder || Object.keys(_kpiDefs);
   const kpiBar = document.getElementById('kpi-bar');
