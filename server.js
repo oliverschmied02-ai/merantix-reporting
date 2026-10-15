@@ -17,6 +17,7 @@ import { router as dataRoutes } from './src/server/routes/data.js';
 import { router as planRoutes } from './src/server/routes/plan.js';
 import { router as driverRoutes } from './src/server/routes/drivers.js';
 import { router as allocationRoutes } from './src/server/routes/allocation.js';
+import { router as aiRoutes } from './src/server/routes/ai.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -97,6 +98,7 @@ app.use(dataRoutes);
 app.use(planRoutes);
 app.use(driverRoutes);
 app.use(allocationRoutes);
+app.use(aiRoutes);
 
 // ── SPA FALLBACK ──────────────────────────────────────────────────────
 app.get('/{*path}', (req, res) => {

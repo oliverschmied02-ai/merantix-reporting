@@ -1,11 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Settings API: no saved comments yet; saves are recorded.
+// Settings API records saves; the analysis endpoint returns canned suggestions.
 const saved = {};
+const analyzeReport = vi.fn();
 vi.mock('../../src/lib/db.js', () => ({
   getSetting: vi.fn(async key => saved[key] ?? null),
   saveSetting: vi.fn(async (key, value) => { saved[key] = value; }),
   loadTransactionsForYear: vi.fn(async () => []),
+  analyzeReport: (...a) => analyzeReport(...a),
 }));
 
 import { APP, resetAPP } from '../../src/state.js';
@@ -13,7 +15,10 @@ import { rebuildAcctMap } from '../../src/lib/resolve.js';
 import { ensureTaxSection } from '../../src/lib/storage.js';
 import { DEFAULT_PL_DEF } from '../../src/data/default-pl.js';
 import { deepClone } from '../../src/lib/utils.js';
-import { openReportScreen, mrCommentInput } from '../../src/ui/mgmt-report.js';
+import {
+  openReportScreen, mrChangeYear, mrCommentInput, mrToggleMonth, mrPreset,
+  mrAnalyze, mrAcceptAllComments, mrAcceptSummary,
+} from '../../src/ui/mgmt-report.js';
 
 const flush = () => new Promise(r => setTimeout(r, 0));
 
@@ -42,55 +47,66 @@ describe('ensureTaxSection', () => {
   });
 
   it('is a no-op once the section exists', () => {
-    const def = deepClone(DEFAULT_PL_DEF);
-    expect(ensureTaxSection(def)).toBe(false);
+    expect(ensureTaxSection(deepClone(DEFAULT_PL_DEF))).toBe(false);
   });
 });
 
 describe('Management report', () => {
-  beforeEach(() => {
+  const rows = () => [...document.querySelectorAll('#mr-content tbody tr')];
+  const row = label => rows().find(tr => tr.querySelector('.mr-pos')?.textContent === label);
+  const nums = tr => [...tr.querySelectorAll('.mr-num')].map(td => td.textContent.trim());
+  const headers = () => [...document.querySelectorAll('#mr-content thead th')].map(th => th.textContent.trim());
+
+  beforeEach(async () => {
+    for (const k of Object.keys(saved)) delete saved[k];
+    analyzeReport.mockReset();
     resetAPP();
     APP.years = [2026];
     APP.loadedYears = new Set([2026]);
     APP.allTransactions = [
-      txn(440000, 0, 100000, 3),   // revenue 100k in Mar
-      txn(630300, 30000, 0, 3),    // opex 30k in Mar
-      txn(760000, 20000, 0, 3),    // Körperschaftsteuer 20k in Mar
-      txn(440000, 0, 50000, 1),    // revenue 50k in Jan (YTD only)
+      txn(440000, 0, 50000, 1),    // revenue 50k Jan
+      txn(440000, 0, 80000, 2),    // revenue 80k Feb
+      txn(440000, 0, 100000, 3),   // revenue 100k Mar
+      txn(630300, 30000, 0, 3),    // opex 30k Mar
+      txn(760000, 20000, 0, 3),    // Körperschaftsteuer 20k Mar
     ];
     rebuildAcctMap();
     document.body.innerHTML = `
       <div id="toast"></div>
+      <select id="year-sel"><option value="2026" selected>2026</option></select>
       <select id="mr-year-sel"></select>
-      <select id="mr-period-sel"></select>
+      <button id="mr-analyze-btn"></button>
       <span id="mr-save-status"></span>
       <div id="mr-content"></div>`;
-  });
-
-  it('shows period + YTD values, taxes and net income below EBT', async () => {
     await openReportScreen();
-    const rows = [...document.querySelectorAll('#mr-content tbody tr')];
-    const row = label => rows.find(tr => tr.querySelector('.mr-pos')?.textContent === label);
-
-    const ebt = row('EBT (Ergebnis vor Steuern)');
-    const tax = row('Steuern vom Einkommen und Ertrag');
-    const net = row('Jahresergebnis (nach Steuern)');
-    expect(rows.indexOf(tax)).toBe(rows.indexOf(ebt) + 1); // taxes directly below EBT
-    expect(net).toBeTruthy();
-
-    // Mar: 100k − 30k = 70k EBT; − 20k tax = 50k. YTD adds Jan revenue 50k.
-    const nums = tr => [...tr.querySelectorAll('.mr-num')].map(td => td.textContent.trim());
-    expect(nums(ebt)).toEqual(['70.000', '120.000']);
-    expect(nums(tax)).toEqual(['−20.000', '−20.000']);
-    expect(nums(net)).toEqual(['50.000', '100.000']);
-
-    // Every row carries a comment field.
-    expect(rows.every(tr => tr.querySelector('textarea.mr-comment-input'))).toBe(true);
+    await mrChangeYear(); // module keeps the selection across visits — reset to the default (latest month)
   });
 
-  it('auto-saves comments per year + period', async () => {
+  it('defaults to the latest month: YTD left, month right, taxes below EBT', () => {
+    expect(headers()).toEqual(['Position', 'YTD Jan–Mrz', 'Mrz', 'Kommentar']);
+    const all = rows();
+    expect(all.indexOf(row('Steuern vom Einkommen und Ertrag'))).toBe(all.indexOf(row('EBT (Ergebnis vor Steuern)')) + 1);
+    // YTD: 230k − 30k − 20k = 180k; Mar: 100k − 30k − 20k = 50k
+    expect(nums(row('Jahresergebnis (nach Steuern)'))).toEqual(['180.000', '50.000']);
+    expect(nums(row('Steuern vom Einkommen und Ertrag'))).toEqual(['−20.000', '−20.000']);
+    expect(rows().every(tr => tr.querySelector('textarea.mr-comment-input'))).toBe(true);
+  });
+
+  it('supports multiple months, keeping YTD first', async () => {
+    await mrToggleMonth(1);
+    expect(headers()).toEqual(['Position', 'YTD Jan–Mrz', 'Jan', 'Mrz', 'Kommentar']);
+    await mrPreset('Q1');
+    expect(headers()).toEqual(['Position', 'YTD Jan–Mrz', 'Jan', 'Feb', 'Mrz', 'Kommentar']);
+    expect(nums(row('Umsatzerlöse & Erträge'))).toEqual(['230.000', '50.000', '80.000', '100.000']);
+  });
+
+  it('never deselects the last remaining month', async () => {
+    await mrToggleMonth(3);
+    expect(headers()).toEqual(['Position', 'YTD Jan–Mrz', 'Mrz', 'Kommentar']);
+  });
+
+  it('auto-saves comments per year + month selection', async () => {
     vi.useFakeTimers();
-    await openReportScreen();
     const ta = document.querySelector('#mr-content textarea.mr-comment-input');
     ta.value = 'Umsatz über Plan wegen Fund II Closing';
     mrCommentInput('revenue', ta);
@@ -98,5 +114,36 @@ describe('Management report', () => {
     vi.useRealTimers();
     await flush();
     expect(saved['mgmt_report_v1_2026_M3']?.comments?.revenue).toBe('Umsatz über Plan wegen Fund II Closing');
+  });
+
+  it('sends the selection to Claude and applies suggestions without overwriting', async () => {
+    saved['mgmt_report_v1_2026_M2-3'] = { summary: '', comments: { revenue: 'Eigener Kommentar' } };
+    await mrPreset('Q1');          // loads M1-2-3 (empty)
+    await mrToggleMonth(1);        // → M2-3, which has the user's own revenue comment
+
+    analyzeReport.mockResolvedValue({
+      summary: '• Umsatz +25 % ggü. Vormonat',
+      comments: { revenue: 'Starker Anstieg im März.', 'opex::opex_ext': 'Erstmals Fremdleistungen.' },
+    });
+    await mrAnalyze();
+
+    const payload = analyzeReport.mock.calls[0][0];
+    expect(payload.months).toEqual([2, 3]);
+    expect(payload.rows.find(r => r.key === 'revenue').months).toEqual({ 2: 80000, 3: 100000 });
+    expect(document.querySelector('.mr-ai-text').textContent).toContain('Umsatz +25 %');
+
+    mrAcceptAllComments();
+    const val = key => document.querySelector(`[data-input-args*='"${key}"']`).value;
+    expect(val('opex::opex_ext')).toBe('Erstmals Fremdleistungen.'); // empty → filled
+    expect(val('revenue')).toBe('Eigener Kommentar');                 // user text kept
+
+    mrAcceptSummary();
+    expect(document.getElementById('mr-summary').value).toBe('• Umsatz +25 % ggü. Vormonat');
+  });
+
+  it('shows the server error when analysis fails', async () => {
+    analyzeReport.mockRejectedValue(new Error('ANTHROPIC_API_KEY fehlt'));
+    await mrAnalyze();
+    expect(document.querySelector('.mr-ai-error').textContent).toContain('ANTHROPIC_API_KEY fehlt');
   });
 });

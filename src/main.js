@@ -20,7 +20,8 @@ import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
 import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonthFrom, avpChangeMonthTo, avpToggleDrilldown, avpExportCSV, avpExportPrint } from './ui/avp.js';
 import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
-import { openReportScreen as _openReportScreen, mrChangeYear, mrChangePeriod, mrCommentInput, mrSummaryInput, mrExportPrint } from './ui/mgmt-report.js';
+import { openReportScreen as _openReportScreen, mrChangeYear, mrToggleMonth, mrPreset, mrCommentInput, mrSummaryInput, mrExportPrint,
+  mrAnalyze, mrCloseAnalysis, mrAcceptSummary, mrAcceptComment, mrAcceptAllComments } from './ui/mgmt-report.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
   planOpenVersion, planBackToList, planSetCategory, planPnlToggle, planSaveEdits,
   planCellBlur, planCellKeydown,
@@ -90,7 +91,8 @@ Object.assign(window, {
   // Personnel / headcount
   openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel,
   // Management report
-  mrChangeYear, mrChangePeriod, mrCommentInput, mrSummaryInput, mrExportPrint,
+  mrChangeYear, mrToggleMonth, mrPreset, mrCommentInput, mrSummaryInput, mrExportPrint,
+  mrAnalyze, mrCloseAnalysis, mrAcceptSummary, mrAcceptComment, mrAcceptAllComments,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────

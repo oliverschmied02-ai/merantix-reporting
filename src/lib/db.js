@@ -502,3 +502,14 @@ export async function generatePersonnelSplit(versionId) {
   if (!res.ok) throw new Error(json.error);
   return json;
 }
+
+// ── Management report: Claude analysis ───────────────────────────────
+
+export async function analyzeReport(payload) {
+  const res = await apiFetch('/api/report/analyze', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(payload),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Analyse fehlgeschlagen (${res.status})`);
+  return json;
+}
