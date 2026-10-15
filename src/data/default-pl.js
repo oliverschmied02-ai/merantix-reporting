@@ -1,3 +1,20 @@
+// Income taxes (SKR04 7600–7649, "Steuern vom Einkommen und Ertrag"), shown
+// below EBT. Exported separately so storage.js can add them to charts of
+// accounts that were saved before this section existed.
+export const TAX_SECTION = {
+  id: 'taxes', type: 'section', label: 'Steuern vom Einkommen und Ertrag', normalBalance: 'S',
+  subs: [
+    { id: 'tax_kst',   label: 'Körperschaftsteuer & Soli',                  accounts: [760000, 760300, 760400, 760800], normalBalance: 'S' },
+    { id: 'tax_gewst', label: 'Gewerbesteuer',                              accounts: [761000],                         normalBalance: 'S' },
+    { id: 'tax_prior', label: 'Steuern Vorjahre & Auflösung Rückstellungen', accounts: [764000, 764200, 764300],         normalBalance: 'S' },
+  ],
+};
+
+export const NET_INCOME = {
+  id: 'net_income', type: 'computed', label: 'Jahresergebnis (nach Steuern)',
+  formula: [['ebt', +1], ['taxes', -1]], level: 'final',
+};
+
 export const DEFAULT_PL_DEF = [
   {
     id: 'revenue', type: 'section', label: 'Umsatzerlöse & Erträge', normalBalance: 'H',
@@ -47,4 +64,6 @@ export const DEFAULT_PL_DEF = [
     ],
   },
   { id: 'ebt', type: 'computed', label: 'EBT (Ergebnis vor Steuern)', formula: [['ebit', +1], ['financial', +1]], level: 'final' },
+  TAX_SECTION,
+  NET_INCOME,
 ];

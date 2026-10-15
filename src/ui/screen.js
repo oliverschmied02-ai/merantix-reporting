@@ -30,11 +30,14 @@ export function setScreen(name) {
     if (planEl) planEl.style.display = name === 'plan-screen' ? 'flex' : 'none';
     const avpEl = document.getElementById('avp-screen');
     if (avpEl) avpEl.style.display = name === 'avp-screen' ? 'flex' : 'none';
+    const reportEl = document.getElementById('report-screen');
+    if (reportEl) reportEl.style.display = name === 'report-screen' ? 'flex' : 'none';
 
     document.getElementById('nav-pl').classList.toggle('active', name === 'pl-screen');
     document.getElementById('nav-files').classList.toggle('active', name === 'files-screen');
     document.getElementById('nav-plan')?.classList.toggle('active', name === 'plan-screen');
     document.getElementById('nav-avp')?.classList.toggle('active', name === 'avp-screen');
+    document.getElementById('nav-report')?.classList.toggle('active', name === 'report-screen');
     if (name === 'files-screen') renderFilesScreen();
   }
 }

@@ -20,6 +20,7 @@ import { toggleSidebar, renderFilesScreen } from './ui/files.js';
 import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTransactionsForYear, clearFromServer, getUsers, createUser, deleteUser, resetUserPassword, changeMyPassword, updateUserRole, requestAccess, getAccessRequests, approveRequest, rejectRequest, getAuditLog } from './lib/db.js';
 import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonthFrom, avpChangeMonthTo, avpToggleDrilldown, avpExportCSV, avpExportPrint } from './ui/avp.js';
 import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
+import { openReportScreen as _openReportScreen, mrChangeYear, mrChangePeriod, mrCommentInput, mrSummaryInput, mrExportPrint } from './ui/mgmt-report.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
   planOpenVersion, planBackToList, planSetCategory, planPnlToggle, planSaveEdits,
   planCellBlur, planCellKeydown,
@@ -41,6 +42,7 @@ function setMainView(name) {
   setScreen(name);
   if (name === 'plan-screen') _openPlanScreen();
   if (name === 'avp-screen')  _openAvpScreen();
+  if (name === 'report-screen') _openReportScreen();
 }
 
 // ── Expose globals ────────────────────────────────────────────────────
@@ -87,6 +89,8 @@ Object.assign(window, {
   avpExportCSV, avpExportPrint,
   // Personnel / headcount
   openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel,
+  // Management report
+  mrChangeYear, mrChangePeriod, mrCommentInput, mrSummaryInput, mrExportPrint,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────

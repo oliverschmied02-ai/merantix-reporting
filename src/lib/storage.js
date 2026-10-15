@@ -1,5 +1,5 @@
 import { APP } from '../state.js';
-import { DEFAULT_PL_DEF } from '../data/default-pl.js';
+import { DEFAULT_PL_DEF, TAX_SECTION, NET_INCOME } from '../data/default-pl.js';
 import { deepClone } from './utils.js';
 import { rebuildAcctMap } from './resolve.js';
 import { getSetting, saveSetting } from './db.js';
@@ -9,6 +9,27 @@ function persistSetting(key, value) {
   saveSetting(key, value).catch(() => {}); // best-effort, non-blocking
 }
 
+/**
+ * Charts of accounts saved before the tax section existed lack it. Insert the
+ * tax section (plus the after-tax result) directly below EBT, without taking
+ * accounts the user has already mapped elsewhere. Mutates `def`.
+ * @returns {boolean} true if `def` was changed
+ */
+export function ensureTaxSection(def) {
+  if (!Array.isArray(def)) return false;
+  if (def.some(it => it.id === TAX_SECTION.id || it.id === NET_INCOME.id)) return false;
+
+  const mapped = new Set();
+  for (const it of def) for (const s of it.subs || []) for (const a of s.accounts || []) mapped.add(a);
+
+  const taxes = deepClone(TAX_SECTION);
+  for (const s of taxes.subs) s.accounts = s.accounts.filter(a => !mapped.has(a));
+
+  const ebtIdx = def.findIndex(it => it.id === 'ebt');
+  def.splice(ebtIdx >= 0 ? ebtIdx + 1 : def.length, 0, taxes, deepClone(NET_INCOME));
+  return true;
+}
+
 // Load from localStorage synchronously (instant), then sync server settings in background.
 // The background sync updates APP state and re-renders if the server has newer data.
 export function loadAppState() {
@@ -16,6 +37,7 @@ export function loadAppState() {
     const coa = localStorage.getItem('gdpdu_coa_v1');
     APP.plDef = coa ? JSON.parse(coa) : deepClone(DEFAULT_PL_DEF);
   } catch { APP.plDef = deepClone(DEFAULT_PL_DEF); }
+  if (ensureTaxSection(APP.plDef)) persistSetting('gdpdu_coa_v1', APP.plDef);
   try {
     const rules = localStorage.getItem('gdpdu_rules_v1');
     APP.rules = rules ? JSON.parse(rules) : [];
@@ -35,6 +57,7 @@ async function syncSettingsFromServer() {
   let changed = false;
 
   if (serverCoA) {
+    const migrated = ensureTaxSection(serverCoA);
     const current = JSON.stringify(APP.plDef);
     const incoming = JSON.stringify(serverCoA);
     if (current !== incoming) {
@@ -42,6 +65,7 @@ async function syncSettingsFromServer() {
       localStorage.setItem('gdpdu_coa_v1', incoming);
       changed = true;
     }
+    if (migrated) saveSetting('gdpdu_coa_v1', serverCoA).catch(() => {});
   }
 
   if (serverRules) {
