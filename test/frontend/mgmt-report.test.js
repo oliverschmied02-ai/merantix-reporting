@@ -3,12 +3,23 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 // Settings API records saves; the analysis endpoint returns canned suggestions.
 const saved = {};
 const analyzeReport = vi.fn();
+const { openDrillTxns } = vi.hoisted(() => ({ openDrillTxns: vi.fn() }));
 vi.mock('../../src/lib/db.js', () => ({
   getSetting: vi.fn(async key => saved[key] ?? null),
   saveSetting: vi.fn(async (key, value) => { saved[key] = value; }),
   loadTransactionsForYear: vi.fn(async () => []),
   analyzeReport: (...a) => analyzeReport(...a),
+  getPlanVersions: vi.fn(async () => [{ id: 7, year: 2026, name: 'Budget 2026', type: 'budget' }]),
+  getPlanLineItems: vi.fn(async () => [
+    { id: 1, category: 'revenue', item_id: 'revenue' },
+    { id: 2, category: 'opex', item_id: 'opex_ext' },
+  ]),
+  getPlanEntries: vi.fn(async () => [
+    { line_item_id: 1, month: 3, amount: 90000 },
+    { line_item_id: 2, month: 3, amount: 40000 },
+  ]),
 }));
+vi.mock('../../src/ui/drill.js', () => ({ openDrillTxns }));
 
 import { APP, resetAPP } from '../../src/state.js';
 import { rebuildAcctMap } from '../../src/lib/resolve.js';
@@ -18,6 +29,7 @@ import { deepClone } from '../../src/lib/utils.js';
 import {
   openReportScreen, mrChangeYear, mrCommentInput, mrToggleMonth, mrPreset,
   mrAnalyze, mrAcceptAllComments, mrAcceptSummary,
+  mrToggleSection, mrToggleSub, mrDrill, mrChangePlan,
 } from '../../src/ui/mgmt-report.js';
 
 const flush = () => new Promise(r => setTimeout(r, 0));
@@ -53,7 +65,7 @@ describe('ensureTaxSection', () => {
 
 describe('Management report', () => {
   const rows = () => [...document.querySelectorAll('#mr-content tbody tr')];
-  const row = label => rows().find(tr => tr.querySelector('.mr-pos')?.textContent === label);
+  const row = label => rows().find(tr => tr.querySelector('.mr-label')?.textContent === label);
   const nums = tr => [...tr.querySelectorAll('.mr-num')].map(td => td.textContent.trim());
   const headers = () => [...document.querySelectorAll('#mr-content thead th')].map(th => th.textContent.trim());
 
@@ -71,10 +83,13 @@ describe('Management report', () => {
       txn(760000, 20000, 0, 3),    // Körperschaftsteuer 20k Mar
     ];
     rebuildAcctMap();
+    APP.accountNames = new Map([[630300, 'Fremdleistungen Beratung']]);
+    openDrillTxns.mockReset();
     document.body.innerHTML = `
       <div id="toast"></div>
       <select id="year-sel"><option value="2026" selected>2026</option></select>
       <select id="mr-year-sel"></select>
+      <select id="mr-plan-sel"></select>
       <button id="mr-analyze-btn"></button>
       <span id="mr-save-status"></span>
       <div id="mr-content"></div>`;
@@ -139,6 +154,48 @@ describe('Management report', () => {
 
     mrAcceptSummary();
     expect(document.getElementById('mr-summary').value).toBe('• Umsatz +25 % ggü. Vormonat');
+  });
+
+  it('expands sub-groups to accounts and collapses sections, like the P&L view', async () => {
+    expect(row('630300 · Fremdleistungen Beratung')).toBeUndefined();
+    mrToggleSub('opex::opex_ext');
+    expect(nums(row('630300 · Fremdleistungen Beratung'))).toEqual(['−30.000', '−30.000']);
+    mrToggleSection('opex');
+    expect(row('Fremdleistungen')).toBeUndefined();
+    expect(row('630300 · Fremdleistungen Beratung')).toBeUndefined();
+    mrToggleSection('opex');
+    mrToggleSub('opex::opex_ext');
+  });
+
+  it('opens the bookings behind a number', async () => {
+    mrDrill('opex::opex_ext::630300', 3);
+    let arg = openDrillTxns.mock.calls.at(-1)[0];
+    expect(arg.title).toBe('630300 · Fremdleistungen Beratung');
+    expect(arg.period).toBe('Mrz 2026');
+    expect(arg.txns.map(t => t.ktonr)).toEqual([630300]);
+
+    mrDrill('revenue', 0); // section, YTD → all revenue bookings Jan–Mar
+    arg = openDrillTxns.mock.calls.at(-1)[0];
+    expect(arg.period).toBe('YTD Jan–Mrz 2026');
+    expect(arg.txns).toHaveLength(3);
+  });
+
+  it('sends all accounts and the selected plan (costs negative) to the analysis', async () => {
+    analyzeReport.mockResolvedValue({ summary: 'ok', comments: {}, usedContext: true });
+    await mrAnalyze();
+    const p = analyzeReport.mock.calls[0][0];
+    expect(p.rows.some(r => r.key === 'opex::opex_ext::630300' && r.style === 'acct')).toBe(true);
+    expect(p.plan.version).toBe('Budget 2026');
+    const plan = Object.fromEntries(p.plan.rows.map(r => [r.key, r.months[3]]));
+    expect(plan).toMatchObject({ revenue: 90000, opex: -40000, 'opex::opex_ext': -40000, ebitda: 50000 });
+    expect(document.querySelector('.mr-ai-basis').textContent).toContain('Plan: Budget 2026');
+    expect(document.querySelector('.mr-ai-basis').textContent).toContain('mit Fonds-Kontext');
+
+    document.getElementById('mr-plan-sel').value = '';
+    mrChangePlan();
+    analyzeReport.mockClear();
+    await mrAnalyze();
+    expect(analyzeReport.mock.calls[0][0].plan).toBeNull();
   });
 
   it('shows the server error when analysis fails', async () => {

@@ -405,6 +405,36 @@ const MIGRATIONS = [
         CHECK (category IN ('revenue','personnel','opex','depreciation'));
     `,
   },
+  {
+    version: 15,
+    description: 'Management report: shared analysis context and uploaded documents',
+    sql: `
+      -- Single team-wide row of free-text background for the Claude analysis.
+      CREATE TABLE IF NOT EXISTS report_context (
+        id          INTEGER PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+        content     TEXT NOT NULL DEFAULT '',
+        updated_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        updated_at  TIMESTAMPTZ DEFAULT NOW()
+      );
+      INSERT INTO report_context (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
+      -- Uploaded source documents (e.g. the LPA). Claude condenses each into an
+      -- editable summary once; only the summary is sent with every analysis.
+      CREATE TABLE IF NOT EXISTS report_documents (
+        id           SERIAL PRIMARY KEY,
+        filename     TEXT NOT NULL,
+        media_type   TEXT NOT NULL,
+        size_bytes   INTEGER NOT NULL,
+        data         BYTEA NOT NULL,
+        summary      TEXT NOT NULL DEFAULT '',
+        status       TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','ready','error')),
+        error        TEXT,
+        uploaded_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at   TIMESTAMPTZ DEFAULT NOW(),
+        updated_at   TIMESTAMPTZ DEFAULT NOW()
+      );
+    `,
+  },
 ];
 
 async function runMigrations() {

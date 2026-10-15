@@ -21,7 +21,10 @@ import { checkAuth, login, logout, loadMetaFromServer, loadFromServer, loadTrans
 import { openAvpScreen as _openAvpScreen, avpChangeYear, avpChangeVersion, avpChangeMonthFrom, avpChangeMonthTo, avpToggleDrilldown, avpExportCSV, avpExportPrint } from './ui/avp.js';
 import { openPersonModal, closePersonModal, submitPerson, editPerson, deletePerson, generateAllPersonnel } from './ui/personnel.js';
 import { openReportScreen as _openReportScreen, mrChangeYear, mrToggleMonth, mrPreset, mrCommentInput, mrSummaryInput, mrExportPrint,
-  mrAnalyze, mrCloseAnalysis, mrAcceptSummary, mrAcceptComment, mrAcceptAllComments } from './ui/mgmt-report.js';
+  mrAnalyze, mrCloseAnalysis, mrAcceptSummary, mrAcceptComment, mrAcceptAllComments,
+  mrChangePlan, mrToggleSection, mrToggleSub, mrDrill } from './ui/mgmt-report.js';
+import { mrOpenContext, mrCloseContext, mrContextInput, mrDocSummaryInput, mrUploadDoc,
+  mrReextractDoc, mrDeleteDoc } from './ui/report-context.js';
 import { openPlanScreen as _openPlanScreen, openCreateVersion, closeCreateVersion, submitCreateVersion,
   planOpenVersion, planBackToList, planSetCategory, planPnlToggle, planSaveEdits,
   planCellBlur, planCellKeydown,
@@ -93,6 +96,8 @@ Object.assign(window, {
   // Management report
   mrChangeYear, mrToggleMonth, mrPreset, mrCommentInput, mrSummaryInput, mrExportPrint,
   mrAnalyze, mrCloseAnalysis, mrAcceptSummary, mrAcceptComment, mrAcceptAllComments,
+  mrChangePlan, mrToggleSection, mrToggleSub, mrDrill,
+  mrOpenContext, mrCloseContext, mrContextInput, mrDocSummaryInput, mrUploadDoc, mrReextractDoc, mrDeleteDoc,
 });
 
 // ── Login ─────────────────────────────────────────────────────────────
@@ -610,6 +615,9 @@ async function initApp() {
   document.getElementById('settings-modal').addEventListener('click', e => {
     if (e.target === document.getElementById('settings-modal')) toggleSettings(false);
   });
+  document.getElementById('mr-ctx-panel')?.addEventListener('click', e => {
+    if (e.target === e.currentTarget) mrCloseContext();
+  });
   initOutsidePickerClose();
   window.addEventListener('resize', updateAboveTableHeight);
 
@@ -617,6 +625,8 @@ async function initApp() {
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     if (document.getElementById('drill-panel')?.classList.contains('open')) { closeDrill(); return; }
+    const ctxPanel = document.getElementById('mr-ctx-panel');
+    if (ctxPanel && !ctxPanel.classList.contains('hidden')) { mrCloseContext(); return; }
     if (document.getElementById('settings-modal')?.classList.contains('open')) toggleSettings(false);
   });
 

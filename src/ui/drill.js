@@ -72,9 +72,22 @@ export function openDrill(acct, subId, itemId, periodIdx) {
   const aName = APP.accountNames.get(acct) || '';
   const sub = APP.plDef.flatMap(i => i.subs || []).find(s => s.id === subId);
 
-  document.getElementById('drill-title').textContent = `${acct}${aName ? ' · ' + aName : ''}`;
-  document.getElementById('drill-period').textContent = periodLabel;
-  document.getElementById('drill-sub').textContent = sub?.label || '';
+  openDrillTxns({
+    title: `${acct}${aName ? ' · ' + aName : ''}`,
+    period: periodLabel,
+    sub: sub?.label || '',
+    txns,
+  });
+}
+
+/**
+ * Open the transaction panel for an arbitrary list of bookings (used by the
+ * P&L view and the management report).
+ */
+export function openDrillTxns({ title, period, sub, txns }) {
+  document.getElementById('drill-title').textContent = title;
+  document.getElementById('drill-period').textContent = period;
+  document.getElementById('drill-sub').textContent = sub || '';
   document.getElementById('drill-search').value = '';
 
   const soll  = txns.reduce((s, t) => s + t.soll, 0);

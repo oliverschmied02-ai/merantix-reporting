@@ -593,7 +593,10 @@
             <div class="top-sep"></div>
             <span class="lbl">Jahr</span>
             <select id="mr-year-sel" class="ctrl" data-change="mrChangeYear"></select>
+            <span class="lbl">Plan</span>
+            <select id="mr-plan-sel" class="ctrl" style="min-width:150px" data-change="mrChangePlan" title="Planversion, die Claude für den Ist-Plan-Vergleich erhält"></select>
             <span class="plan-save-status" id="mr-save-status"></span>
+            <button class="btn-export" data-act="mrOpenContext" title="Hintergrundwissen und Dokumente (z. B. LPA) für die Claude-Analyse">📚 Kontext</button>
             <button class="btn-export btn-ai" id="mr-analyze-btn" data-act="mrAnalyze" title="Die ausgewählten Monate von Claude analysieren lassen">
               ✨ Mit Claude analysieren
             </button>
@@ -605,6 +608,7 @@
           <div class="plan-grid-container" id="mr-content">
             <div class="plan-empty">Laden…</div>
           </div>
+          <div id="mr-ctx-panel" class="mr-ctx-overlay hidden"></div>
         </div><!-- /report-screen -->
 
       </div><!-- /app-main -->

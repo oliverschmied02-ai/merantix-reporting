@@ -513,3 +513,41 @@ export async function analyzeReport(payload) {
   if (!res.ok) throw new Error(json.error || `Analyse fehlgeschlagen (${res.status})`);
   return json;
 }
+
+// ── Management report: shared context + documents ────────────────────
+
+async function jsonOrThrow(res) {
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || `Fehler ${res.status}`);
+  return json;
+}
+
+export async function getReportContext() {
+  return jsonOrThrow(await apiFetch('/api/report/context'));
+}
+
+export async function saveReportContext(content) {
+  return jsonOrThrow(await apiFetch('/api/report/context', {
+    method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify({ content }),
+  }));
+}
+
+export async function uploadReportDocument(filename, media_type, data) {
+  return jsonOrThrow(await apiFetch('/api/report/documents', {
+    method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ filename, media_type, data }),
+  }));
+}
+
+export async function reextractReportDocument(id) {
+  return jsonOrThrow(await apiFetch(`/api/report/documents/${id}/extract`, { method: 'POST' }));
+}
+
+export async function updateReportDocument(id, summary) {
+  return jsonOrThrow(await apiFetch(`/api/report/documents/${id}`, {
+    method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ summary }),
+  }));
+}
+
+export async function deleteReportDocument(id) {
+  return jsonOrThrow(await apiFetch(`/api/report/documents/${id}`, { method: 'DELETE' }));
+}

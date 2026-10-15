@@ -3,28 +3,43 @@
  * next to every line item, plus an executive summary.
  *
  * Columns: YTD (Jan through the latest selected month) on the left, then one
- * column per selected month, then the comment. Comments auto-save per user,
- * year and month selection. "Mit Claude analysieren" asks the server for an
- * executive summary and per-line comment suggestions that can be accepted.
- * The report exports to PDF via the print dialog.
+ * column per selected month, then the comment. Like the P&L view, sections
+ * expand to sub-groups and sub-groups to accounts; clicking a number opens the
+ * underlying bookings. Comments auto-save per user, year and month selection.
+ * "Mit Claude analysieren" sends the figures (incl. account detail and the
+ * selected plan version) to the server, which adds the team-wide context
+ * (see report-context.js) and returns an executive summary plus per-line
+ * comment suggestions. The report exports to PDF via the print dialog.
  */
 
 import { APP } from '../state.js';
 import { esc, MONTH_SHORT } from '../lib/utils.js';
 import { computePLSingle } from '../lib/compute.js';
-import { getSetting, saveSetting, loadTransactionsForYear, analyzeReport } from '../lib/db.js';
+import {
+  getSetting, saveSetting, loadTransactionsForYear, analyzeReport,
+  getPlanVersions, getPlanLineItems, getPlanEntries,
+} from '../lib/db.js';
 import { showToast } from './screen.js';
 import { onClick, onInput } from './dispatch.js';
+import { openDrillTxns } from './drill.js';
 
 // ── Module state ──────────────────────────────────────────────────────
 
 let _year    = null;
 let _months  = [];                 // selected months, sorted ascending, never empty once set
 let _notes   = { summary: '', comments: {} };
-let _rows    = [];                 // last rendered rows (shared with PDF export)
-let _ai      = null;               // { status: 'loading'|'done'|'error', sig, summary, comments, error }
+let _rows    = [];                 // last rendered (visible) rows — shared with PDF export
+let _pls     = null;               // { months: { [m]: pl }, ytd: pl } of the last render (for drill-down)
+let _ai      = null;               // { status: 'loading'|'done'|'error', sig, summary, comments, error, ... }
 let _saveTimer = null;
 let _dirty   = false;
+
+const _collapsed = new Set();      // section ids whose sub-groups are hidden
+const _openSubs  = new Set();      // "item::sub" keys whose accounts are shown
+
+let _planVersions = [];            // all plan versions (any year)
+let _planId       = null;          // selected plan version id, or null for "ohne Plan"
+let _planData     = null;          // { id, lineItems, entries }
 
 const SAVE_DELAY = 800;
 const FMT = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
@@ -34,6 +49,9 @@ const PRESETS = {
   H1: [1, 2, 3, 4, 5, 6], H2: [7, 8, 9, 10, 11, 12],
 };
 
+// Planning line-item ids for personnel map onto these P&L sub-groups.
+const PLAN_SUB_ALIAS = { personnel_wages: 'pers_wages', personnel_social: 'pers_social' };
+
 // ── Entry point ───────────────────────────────────────────────────────
 
 export async function openReportScreen() {
@@ -42,12 +60,14 @@ export async function openReportScreen() {
     const plYear = parseInt(document.getElementById('year-sel')?.value);
     _year = years.includes(plYear) ? plYear : (years[0] ?? null);
     _months = [];
+    _planId = null;
   }
   populateYearSelector(years);
   if (!_year) { renderEmpty('Keine Buchungsdaten geladen. Bitte zuerst eine GDPdU-Datei importieren.'); return; }
 
   await ensureYearLoaded(_year);
   if (!_months.length) _months = [latestMonthWithData(_year)];
+  await loadPlanVersions();
   await loadNotes();
   render();
 }
@@ -67,6 +87,8 @@ export async function mrChangeYear() {
   _year = parseInt(document.getElementById('mr-year-sel')?.value) || null;
   if (!_year) return;
   await ensureYearLoaded(_year);
+  _planId = null;
+  await loadPlanVersions();
   await setMonths([latestMonthWithData(_year)]);
 }
 
@@ -90,6 +112,16 @@ async function setMonths(months) {
   _months = [...new Set(months)].sort((a, b) => a - b);
   _ai = null;
   await loadNotes();
+  render();
+}
+
+export function mrToggleSection(itemId) {
+  if (_collapsed.has(itemId)) _collapsed.delete(itemId); else _collapsed.add(itemId);
+  render();
+}
+
+export function mrToggleSub(subKey) {
+  if (_openSubs.has(subKey)) _openSubs.delete(subKey); else _openSubs.add(subKey);
   render();
 }
 
@@ -126,6 +158,80 @@ async function ensureYearLoaded(year) {
   } catch (e) {
     showToast('Fehler beim Laden des Jahres ' + year + ': ' + e.message);
   }
+}
+
+// ── Plan version (used as comparison input for the analysis) ─────────
+
+async function loadPlanVersions() {
+  try {
+    _planVersions = await getPlanVersions();
+  } catch {
+    _planVersions = [];
+  }
+  const forYear = _planVersions.filter(v => v.year === _year);
+  if (_planId !== null && !forYear.some(v => v.id === _planId)) _planId = null;
+  if (_planId === null && forYear.length) {
+    _planId = (forYear.find(v => v.type === 'budget') ?? forYear[0]).id;
+  }
+  populatePlanSelector(forYear);
+}
+
+function populatePlanSelector(forYear) {
+  const sel = document.getElementById('mr-plan-sel');
+  if (!sel) return;
+  sel.innerHTML = `<option value="">Ohne Plan</option>` +
+    forYear.map(v => `<option value="${v.id}">${esc(v.name)}</option>`).join('');
+  sel.value = _planId ?? '';
+}
+
+export function mrChangePlan() {
+  const v = document.getElementById('mr-plan-sel')?.value;
+  _planId = v ? parseInt(v) : null;
+  if (_ai?.status === 'done') _ai = null; // analysis was based on the previous plan
+  render();
+}
+
+async function loadPlanData() {
+  if (!_planId) return null;
+  if (_planData?.id === _planId) return _planData;
+  const [lineItems, entries] = await Promise.all([getPlanLineItems(_planId), getPlanEntries(_planId)]);
+  _planData = { id: _planId, lineItems, entries };
+  return _planData;
+}
+
+/**
+ * Plan values in the report's display convention (costs negative), keyed like
+ * the report rows: sections, sub-groups where the plan maps onto them, EBITDA.
+ */
+function buildPlanRows(plan) {
+  const liById = new Map(plan.lineItems.map(li => [li.id, li]));
+  const opexSubs = new Set((APP.plDef.find(i => i.id === 'opex')?.subs || []).map(s => s.id));
+  const sums = new Map(); // key → { [month]: amount }
+  const add = (key, m, v) => {
+    if (!sums.has(key)) sums.set(key, {});
+    sums.get(key)[m] = (sums.get(key)[m] || 0) + v;
+  };
+
+  for (const e of plan.entries) {
+    const li = liById.get(e.line_item_id);
+    if (!li) continue;
+    const sign = li.category === 'revenue' ? 1 : -1;
+    const v = sign * Number(e.amount);
+    add(li.category, e.month, v);
+    if (li.category === 'opex' && opexSubs.has(li.item_id)) add(`opex::${li.item_id}`, e.month, v);
+    if (li.category === 'personnel' && PLAN_SUB_ALIAS[li.item_id]) add(`personnel::${PLAN_SUB_ALIAS[li.item_id]}`, e.month, v);
+  }
+  for (let m = 1; m <= 12; m++) {
+    const g = k => sums.get(k)?.[m] || 0;
+    add('ebitda', m, g('revenue') + g('personnel') + g('opex'));
+  }
+
+  const end = ytdEnd();
+  return [...sums.entries()].map(([key, byMonth]) => {
+    let ytd = 0;
+    for (let m = 1; m <= end; m++) ytd += byMonth[m] || 0;
+    return { key, ytd, months: Object.fromEntries(_months.map(m => [m, byMonth[m] || 0])) };
+  }).filter(r => r.ytd !== 0 || Object.values(r.months).some(v => v !== 0));
 }
 
 // ── Notes persistence (per user, per year + month selection) ──────────
@@ -204,19 +310,26 @@ function autoGrow(el) {
 
 // ── Row model ─────────────────────────────────────────────────────────
 
-/**
- * Build display rows for the selected months. Values are signed for display:
- * costs negative, income positive (computed rows as calculated).
- * Each row: { key, style: 'section'|'sub'|'computed'|'final'|'ratio', label,
- *             ytd, months: { [m]: value } }
- */
-function buildRows() {
+function computePLs() {
   const yearTxns = APP.allTransactions.filter(t => t.wjYear === _year);
-  const monthPL = Object.fromEntries(_months.map(m => [m, computePLSingle(yearTxns.filter(t => t.wjMonth === m))]));
-  const yPL = computePLSingle(yearTxns.filter(t => t.wjMonth >= 1 && t.wjMonth <= ytdEnd()));
+  return {
+    months: Object.fromEntries(_months.map(m => [m, computePLSingle(yearTxns.filter(t => t.wjMonth === m))])),
+    ytd: computePLSingle(yearTxns.filter(t => t.wjMonth >= 1 && t.wjMonth <= ytdEnd())),
+  };
+}
 
+/**
+ * Build display rows. Values are signed for display: costs negative, income
+ * positive (computed rows as calculated).
+ * Row: { key, style: 'section'|'sub'|'acct'|'computed'|'final'|'ratio', label,
+ *        ytd, months: { [m]: value }, drill?: true, toggle?: 'section'|'sub', open?: bool }
+ * With `all`, every sub-group and account is included regardless of the
+ * expand state (used for the Claude analysis).
+ */
+function buildRows(pls, { all = false } = {}) {
   const keep = key => !!(_notes.comments[key]?.trim() || _ai?.comments?.[key]);
-  const perMonth = fn => Object.fromEntries(_months.map(m => [m, fn(monthPL[m])]));
+  const perMonth = fn => Object.fromEntries(_months.map(m => [m, fn(pls.months[m])]));
+  const allPLs = [pls.ytd, ...Object.values(pls.months)];
   const rows = [];
 
   for (const item of APP.plDef) {
@@ -225,7 +338,7 @@ function buildRows() {
       rows.push({
         key: item.id, label: item.label,
         style: item.type === 'ratio' ? 'ratio' : item.level === 'final' ? 'final' : 'computed',
-        ytd: val(yPL), months: perMonth(val),
+        ytd: val(pls.ytd), months: perMonth(val),
       });
       continue;
     }
@@ -234,16 +347,43 @@ function buildRows() {
     const isMixed = item.type === 'section_mixed';
     const sectionVal = pl => isMixed ? (pl.computed[item.id] || 0)
       : (nb === 'S' ? -1 : 1) * (pl.vals[item.id]?.amount || 0);
-    rows.push({ key: item.id, style: 'section', label: item.label, ytd: sectionVal(yPL), months: perMonth(sectionVal) });
+    const open = !_collapsed.has(item.id);
+    rows.push({
+      key: item.id, style: 'section', label: item.label, drill: true, toggle: 'section', open,
+      ytd: sectionVal(pls.ytd), months: perMonth(sectionVal),
+    });
+    if (!all && !open) continue;
 
     for (const sub of item.subs || []) {
-      const snb = sub.normalBalance || nb;
-      const subVal = pl => (snb === 'S' ? -1 : 1) * (pl.vals[item.id]?.bySubId[sub.id]?.amount || 0);
+      const sign = (sub.normalBalance || nb) === 'S' ? -1 : 1;
+      const subVal = pl => sign * (pl.vals[item.id]?.bySubId[sub.id]?.amount || 0);
       const key = `${item.id}::${sub.id}`;
-      const ytd = subVal(yPL);
+      const ytd = subVal(pls.ytd);
       const months = perMonth(subVal);
       if (ytd === 0 && Object.values(months).every(v => v === 0) && !keep(key)) continue;
-      rows.push({ key, style: 'sub', label: sub.label, ytd, months });
+
+      const accts = new Set();
+      for (const pl of allPLs) {
+        for (const a of Object.keys(pl.vals[item.id]?.bySubId[sub.id]?.byAccount || {})) accts.add(+a);
+      }
+      const subOpen = _openSubs.has(key);
+      rows.push({
+        key, style: 'sub', label: sub.label, drill: true,
+        toggle: accts.size ? 'sub' : undefined, open: subOpen, ytd, months,
+      });
+      if (!all && !subOpen) continue;
+
+      for (const acct of [...accts].sort((a, b) => a - b)) {
+        const acctVal = pl => sign * (pl.vals[item.id]?.bySubId[sub.id]?.byAccount[acct]?.amount || 0);
+        const aYtd = acctVal(pls.ytd);
+        const aMonths = perMonth(acctVal);
+        if (aYtd === 0 && Object.values(aMonths).every(v => v === 0)) continue;
+        const name = APP.accountNames.get(acct) || '';
+        rows.push({
+          key: `${key}::${acct}`, style: 'acct', drill: true,
+          label: `${acct}${name ? ' · ' + name : ''}`, ytd: aYtd, months: aMonths,
+        });
+      }
     }
   }
   return rows;
@@ -259,6 +399,38 @@ function fmtVal(v, style) {
 const negCls = (v, style) => (style !== 'ratio' && v < 0) ? ' neg' : '';
 const multiline = s => esc(s).replace(/\n/g, '<br>');
 
+// ── Drill-down to bookings ────────────────────────────────────────────
+
+/** Bookings behind a report row (section, sub-group or account) for month m (0 = YTD). */
+function txnsFor(key, m) {
+  const pl = m ? _pls?.months[m] : _pls?.ytd;
+  if (!pl) return [];
+  const [itemId, subId, acct] = key.split('::');
+  const bySub = pl.vals[itemId]?.bySubId || {};
+  const subs = subId ? [bySub[subId]].filter(Boolean) : Object.values(bySub);
+  const out = [];
+  for (const s of subs) {
+    for (const [a, ab] of Object.entries(s.byAccount || {})) {
+      if (acct && +a !== +acct) continue;
+      out.push(...(ab.txns || []));
+    }
+  }
+  return out;
+}
+
+export function mrDrill(key, m) {
+  const [itemId, subId, acct] = key.split('::');
+  const item = APP.plDef.find(i => i.id === itemId);
+  const sub = item?.subs?.find(s => s.id === subId);
+  const name = acct ? (APP.accountNames.get(+acct) || '') : '';
+  openDrillTxns({
+    title: acct ? `${acct}${name ? ' · ' + name : ''}` : (sub?.label || item?.label || ''),
+    period: m ? `${MONTH_SHORT[m - 1]} ${_year}` : `${ytdLabel()} ${_year}`,
+    sub: acct ? (sub?.label || '') : sub ? (item?.label || '') : '',
+    txns: txnsFor(key, m),
+  });
+}
+
 // ── Claude analysis ───────────────────────────────────────────────────
 
 export async function mrAnalyze() {
@@ -268,19 +440,26 @@ export async function mrAnalyze() {
   _ai = { status: 'loading', sig };
   render();
 
-  const payload = {
-    year: _year,
-    months: _months,
-    rows: _rows.map(r => ({ key: r.key, label: r.label, style: r.style, ytd: r.ytd, months: r.months })),
-    summary: _notes.summary,
-    comments: _notes.comments,
-    company: (APP.loadedFiles || []).map(f => f.companyName).filter(Boolean).join(', '),
-  };
-
   try {
+    const pls = computePLs();
+    const plan = await loadPlanData().catch(() => null);
+    const planVersion = _planVersions.find(v => v.id === plan?.id);
+    const payload = {
+      year: _year,
+      months: _months,
+      rows: buildRows(pls, { all: true })
+        .map(r => ({ key: r.key, label: r.label, style: r.style, ytd: r.ytd, months: r.months })),
+      plan: plan ? { version: planVersion?.name || 'Plan', rows: buildPlanRows(plan) } : null,
+      summary: _notes.summary,
+      comments: _notes.comments,
+      company: (APP.loadedFiles || []).map(f => f.companyName).filter(Boolean).join(', '),
+    };
     const result = await analyzeReport(payload);
     if (selectionSig() !== sig) return; // selection changed while waiting
-    _ai = { status: 'done', sig, summary: result.summary || '', comments: result.comments || {} };
+    _ai = {
+      status: 'done', sig, summary: result.summary || '', comments: result.comments || {},
+      usedContext: !!result.usedContext, planName: planVersion?.name || null,
+    };
   } catch (e) {
     if (selectionSig() !== sig) return;
     _ai = { status: 'error', sig, error: e.message };
@@ -345,9 +524,13 @@ function renderAiPanel() {
     </section>`;
   }
   const n = Object.keys(_ai.comments).length;
+  const basis = [
+    _ai.planName ? `Plan: ${esc(_ai.planName)}` : 'ohne Plan',
+    _ai.usedContext ? 'mit Fonds-Kontext' : 'ohne Kontext',
+  ].join(' · ');
   return `<section class="mr-ai">
     <div class="mr-ai-head">
-      <strong>✨ Analyse von Claude · ${esc(selectionLabel())}</strong>
+      <strong>✨ Analyse von Claude · ${esc(selectionLabel())} <span class="mr-ai-basis">${basis}</span></strong>
       <button class="mr-ai-close" ${onClick('mrCloseAnalysis')} title="Schließen">✕</button>
     </div>
     <div class="mr-ai-text">${multiline(_ai.summary)}</div>
@@ -384,6 +567,23 @@ function renderPicker() {
   </div>`;
 }
 
+function labelCell(r) {
+  let toggle = '';
+  if (r.toggle === 'section') toggle = `<button class="mr-tog${r.open ? ' open' : ''}" aria-expanded="${r.open}" ${onClick('mrToggleSection', r.key)}>▶</button>`;
+  else if (r.toggle === 'sub') toggle = `<button class="mr-tog${r.open ? ' open' : ''}" aria-expanded="${r.open}" title="Konten anzeigen" ${onClick('mrToggleSub', r.key)}>▶</button>`;
+  else if (r.style === 'sub') toggle = `<span class="mr-tog-spacer"></span>`;
+  return `<td class="mr-pos">${toggle}<span class="mr-label">${esc(r.label)}</span></td>`;
+}
+
+function numCell(r, v, m, extra = '') {
+  const cls = `mr-num${extra}${negCls(v, r.style)}`;
+  if (r.drill && v) {
+    return `<td class="${cls} mr-click" role="button" tabindex="0" title="Buchungen anzeigen"
+      ${onClick('mrDrill', r.key, m)}>${fmtVal(v, r.style)}</td>`;
+  }
+  return `<td class="${cls}">${fmtVal(v, r.style)}</td>`;
+}
+
 function render() {
   const el = document.getElementById('mr-content');
   if (!el || !_year || !_months.length) return;
@@ -393,11 +593,12 @@ function render() {
     return;
   }
 
-  _rows = buildRows();
+  _pls = computePLs();
+  _rows = buildRows(_pls);
   const suggestions = _ai?.status === 'done' ? _ai.comments : {};
   const many = _months.length > 6;
   const numW = many ? 74 : 88;
-  const minW = 210 + numW * (_months.length + 1) + 260;
+  const minW = 240 + numW * (_months.length + 1) + 260;
 
   const head = `
     <tr>
@@ -411,9 +612,9 @@ function render() {
     const s = suggestions[r.key];
     return `
       <tr class="mr-row mr-${r.style}">
-        <td class="mr-pos">${esc(r.label)}</td>
-        <td class="mr-num mr-ytd${negCls(r.ytd, r.style)}">${fmtVal(r.ytd, r.style)}</td>
-        ${_months.map(m => `<td class="mr-num${negCls(r.months[m], r.style)}">${fmtVal(r.months[m], r.style)}</td>`).join('')}
+        ${labelCell(r)}
+        ${numCell(r, r.ytd, 0, ' mr-ytd')}
+        ${_months.map(m => numCell(r, r.months[m], m)).join('')}
         <td class="mr-comment">
           <textarea class="mr-comment-input" rows="1" placeholder="Kommentar…"
             ${onInput('mrCommentInput', r.key, '@this')}>${esc(_notes.comments[r.key] || '')}</textarea>
@@ -441,7 +642,7 @@ function render() {
       <div class="mr-table-scroll">
         <table class="mr-table${many ? ' mr-many' : ''}" style="min-width:${minW}px">
           <colgroup>
-            <col style="width:210px">
+            <col style="width:240px">
             ${`<col style="width:${numW}px">`.repeat(_months.length + 1)}
             <col>
           </colgroup>
@@ -449,7 +650,7 @@ function render() {
           <tbody>${body}</tbody>
         </table>
       </div>
-      <div class="mr-foot">Alle Beträge in EUR · Aufwand negativ dargestellt · Kommentare werden automatisch gespeichert und gelten für die gewählte Monatsauswahl</div>
+      <div class="mr-foot">Alle Beträge in EUR · Aufwand negativ dargestellt · ▶ klappt Positionen bis auf Konten auf · Klick auf eine Zahl zeigt die Buchungen · Kommentare werden automatisch gespeichert und gelten für die gewählte Monatsauswahl</div>
     </div>`;
 
   el.querySelectorAll('textarea').forEach(autoGrow);
@@ -509,6 +710,8 @@ export async function mrExportPrint() {
   .r-section td { font-weight: 700; background: #f4f6fb; }
   .r-section td.ytd { background: #e9edf6; }
   .r-sub td.pos { padding-left: 14px; color: #4b5563; }
+  .r-acct td { font-size: ${fs - 0.8}pt; color: #6b7280; }
+  .r-acct td.pos { padding-left: 26px; }
   .r-computed td { font-weight: 700; background: #eef1ff; border-top: 1px solid #c8d3ef; }
   .r-final td { font-weight: 700; background: #dfe6fb; border-top: 2px solid #b7c5ec; border-bottom: 2px solid #b7c5ec; }
   .r-ratio td { font-style: italic; color: #4f6ef7; }
